@@ -1,7 +1,7 @@
 // ASCII art module for Slowfetch
 // Uses inkline to render colorized ASCII art
 
-use crate::colorcontrol::get_art_colors;
+use crate::visuals::colorcontrol::get_art_colors;
 use inkline::AsciiArt;
 use std::fs;
 

@@ -1,13 +1,13 @@
 // Image rendering module for Slowfetch
 // Handles layout and display of images using the Kitty graphics protocol
 
-use crate::renderer::{build_box, build_sections_lines, visible_len, Section};
-use crate::terminalsize::get_terminal_size;
+use crate::visuals::renderer::{build_box, build_sections_lines, visible_len, Section};
+use crate::visuals::terminalsize::get_terminal_size;
 
 // Draw a side-by-side or vertically stacked layout with an image placeholder.
 // The image is rendered using Kitty graphics protocol after the box layout is printed.
 // Cursor positioning is used to overlay the image inside the empty box.
-pub fn draw_image_layout(sections: &[Section], image_path: &std::path::Path) {
+pub fn draw_image_layout(sections: &[Section], image_path: Option<&std::path::Path>) {
     // --- step 1: Get terminal dimensions ---
     let (terminal_width, terminal_height) = get_terminal_size()
         .map(|(cols, rows)| (cols as usize, rows as usize))
@@ -70,7 +70,7 @@ pub fn draw_image_layout(sections: &[Section], image_path: &std::path::Path) {
 // After printing the layout, cursor is repositioned to overlay the image.
 fn render_side_by_side_with_image(
     sections: &[Section],
-    image_path: &std::path::Path,
+    image_path: Option<&std::path::Path>,
     image_content_width: usize,
 ) {
     use std::io::Write;
@@ -133,7 +133,11 @@ fn render_side_by_side_with_image(
     let _ = std::io::stdout().flush();
 
     // --- step 5: Display the image using Kitty protocol ---
-    match crate::image::display_image(image_path, image_display_cols as u16, image_display_rows as u16) {
+    let result = match image_path {
+        Some(path) => crate::modules::imagemodule::display_image(path, image_display_cols as u16, image_display_rows as u16),
+        None => crate::modules::imagemodule::display_default_image(image_display_cols as u16, image_display_rows as u16),
+    };
+    match result {
         Ok(image_output) => {
             print!("{}", image_output);
             let _ = std::io::stdout().flush();
@@ -151,7 +155,7 @@ fn render_side_by_side_with_image(
 // Falls back to sections-only if terminal is too small.
 fn render_stacked_with_image(
     sections: &[Section],
-    image_path: &std::path::Path,
+    image_path: Option<&std::path::Path>,
     sections_content_width: usize,
     sections_total_height: usize,
     terminal_height: usize,
@@ -214,7 +218,11 @@ fn render_stacked_with_image(
         let _ = std::io::stdout().flush();
 
         // --- step 7: Display the image ---
-        match crate::image::display_image(image_path, image_content_width as u16, image_content_height as u16) {
+        let result = match image_path {
+            Some(path) => crate::modules::imagemodule::display_image(path, image_content_width as u16, image_content_height as u16),
+            None => crate::modules::imagemodule::display_default_image(image_content_width as u16, image_content_height as u16),
+        };
+        match result {
             Ok(image_output) => {
                 print!("{}", image_output);
                 let _ = std::io::stdout().flush();

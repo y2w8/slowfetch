@@ -1,7 +1,7 @@
 // slowfetch rendering system
 
-use crate::colorcontrol::{color_border, color_key, color_title, color_value};
-use crate::terminalsize::get_terminal_size;
+use crate::visuals::colorcontrol::{color_border, color_key, color_title, color_value};
+use crate::visuals::terminalsize::get_terminal_size;
 
 // Box drawing characters (as &str for easier concatenation)
 const BOX_TOP_LEFT: &str = "╭";

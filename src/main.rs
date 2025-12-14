@@ -1,18 +1,14 @@
 //Slowfetch by Tūī
 
 mod cache;
-mod colorcontrol;
 mod configloader;
 mod helpers;
-mod image;
-mod imagerender;
 mod modules;
-mod renderer;
-mod terminalsize;
+mod visuals;
 
 use clap::Parser;
 use configloader::OsArtSetting;
-use renderer::Section;
+use visuals::renderer::Section;
 use std::thread;
 
 // cmd line args, *claps*
@@ -42,7 +38,7 @@ fn main() {
 
     // Load config first and initialize colors before spawning threads
     let config = configloader::load_config();
-    colorcontrol::init_colors(config.colors.clone());
+    visuals::colorcontrol::init_colors(config.colors.clone());
 
     // Only spawn threads for slow I/O operations (subprocesses)
     // These may run external commands like vulkaninfo, df, shell --version, etc.
@@ -118,41 +114,33 @@ fn main() {
     // Check if image mode is requested (CLI arg or config) AND terminal supports it
     let use_image = args.image.is_some() || config.image;
 
-    if use_image && image::supports_kitty_graphics() {
+    if use_image {
         // Determine image path:
         // 1. CLI arg with explicit path takes highest priority
-        // 2. CLI arg empty (-i/--image) uses config.image_path if set, else default
-        // 3. Config image=true uses config.image_path if set, else default
-        let image_path = if let Some(ref image_arg) = args.image {
+        // 2. CLI arg empty (-i/--image) uses config.image_path if set, else embedded default
+        // 3. Config image=true uses config.image_path if set, else embedded default
+        let image_path: Option<std::path::PathBuf> = if let Some(ref image_arg) = args.image {
             if image_arg.is_empty() {
                 // CLI flag without path - use config image_path if available
-                if let Some(ref config_path) = config.image_path {
-                    std::path::PathBuf::from(config_path)
-                } else {
-                    image::get_default_image_path()
-                }
+                config.image_path.as_ref().map(std::path::PathBuf::from)
             } else if image_arg.starts_with("~/") {
                 // CLI flag with explicit path (expand ~)
-                if let Some(home) = std::env::var_os("HOME") {
+                Some(if let Some(home) = std::env::var_os("HOME") {
                     std::path::PathBuf::from(home).join(&image_arg[2..])
                 } else {
                     std::path::PathBuf::from(image_arg)
-                }
+                })
             } else {
                 // CLI flag with explicit path
-                std::path::PathBuf::from(image_arg)
+                Some(std::path::PathBuf::from(image_arg))
             }
         } else {
-            // Config image=true, use config image_path if set, else default
-            if let Some(ref config_path) = config.image_path {
-                std::path::PathBuf::from(config_path)
-            } else {
-                image::get_default_image_path()
-            }
+            // Config image=true, use config image_path if set
+            config.image_path.as_ref().map(std::path::PathBuf::from)
         };
 
         // Draw image layout (imagerender handles all the logic)
-        imagerender::draw_image_layout(&[core, hardware, userspace], &image_path);
+        visuals::imagerender::draw_image_layout(&[core, hardware, userspace], image_path.as_deref());
     } else {
         // Standard ASCII art mode
         // Check for custom art first (overrides everything else)
@@ -210,7 +198,7 @@ fn main() {
 
         print!(
             "{}",
-            renderer::draw_layout(
+            visuals::renderer::draw_layout(
                 &wide,
                 &medium,
                 &narrow,
