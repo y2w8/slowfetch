@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use memchr::{memchr, memchr_iter};
 
 // Embed the default config file at compile time
 const DEFAULT_CONFIG: &str = include_str!("config.toml");
@@ -184,31 +185,59 @@ pub fn load_config() -> Config {
     parse_config(&content)
 }
 
-// Parse the TOML config content
+// Parse the TOML config content using byte-level operations
 fn parse_config(content: &str) -> Config {
     let mut config = Config::default();
+    let bytes = content.as_bytes();
     let mut in_colors_section = false;
 
-    for line in content.lines() {
-        let line = line.trim();
+    // Process line by line using memchr
+    let mut start = 0;
+    for end in memchr_iter(b'\n', bytes).chain(std::iter::once(bytes.len())) {
+        let line = &bytes[start..end];
+        start = end + 1;
 
-        // Skip comments and empty lines
-        if line.is_empty() || line.starts_with('#') {
+        // Skip empty lines
+        if line.is_empty() {
             continue;
         }
 
-        // Track which section we're in
-        if line.starts_with('[') {
-            in_colors_section = line == "[colors]";
+        // Find first non-whitespace
+        let first_nonws = match line.iter().position(|&b| b != b' ' && b != b'\t') {
+            Some(p) => p,
+            None => continue,
+        };
+        let line = &line[first_nonws..];
+
+        // Skip comments
+        if line.first() == Some(&b'#') {
             continue;
         }
+
+        // Track sections
+        if line.first() == Some(&b'[') {
+            in_colors_section = line == b"[colors]";
+            continue;
+        }
+
+        // Find '=' for key=value parsing
+        let eq_pos = match memchr(b'=', line) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        let key = &line[..eq_pos];
+        let value = &line[eq_pos + 1..];
+
+        // Trim key and value
+        let key = trim_bytes(key);
+        let value = trim_bytes(value);
 
         // Parse color settings
         if in_colors_section {
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim();
-                if let Some(color) = parse_hex_color(value) {
-                    match key {
+            if let (Ok(key_str), Ok(value_str)) = (std::str::from_utf8(key), std::str::from_utf8(value)) {
+                if let Some(color) = parse_hex_color(value_str) {
+                    match key_str {
                         "border" => config.colors.border = color,
                         "title" => config.colors.title = color,
                         "key" => config.colors.key = color,
@@ -230,73 +259,44 @@ fn parse_config(content: &str) -> Config {
         }
 
         // Parse os_art setting
-        if line.starts_with("os_art") {
-            if let Some(value) = line.split('=').nth(1) {
-                let value = value.trim();
-
-                if value == "true" {
-                    config.os_art = OsArtSetting::Auto;
-                } else if value == "false" {
-                    config.os_art = OsArtSetting::Disabled;
-                } else if value.starts_with('"') && value.ends_with('"') {
-                    // Extract string value between quotes
-                    let os_name = value.trim_matches('"').to_string();
+        if key == b"os_art" {
+            if value == b"true" {
+                config.os_art = OsArtSetting::Auto;
+            } else if value == b"false" {
+                config.os_art = OsArtSetting::Disabled;
+            } else if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                if let Ok(os_name) = std::str::from_utf8(&value[1..value.len() - 1]) {
                     if !os_name.is_empty() {
-                        config.os_art = OsArtSetting::Specific(os_name);
+                        config.os_art = OsArtSetting::Specific(os_name.to_string());
                     }
                 }
             }
         }
 
         // Parse custom_art setting
-        if line.starts_with("custom_art") {
-            if let Some(value) = line.split('=').nth(1) {
-                let value = value.trim();
-                if value.starts_with('"') && value.ends_with('"') {
-                    let path = value.trim_matches('"').to_string();
+        if key == b"custom_art" {
+            if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                if let Ok(path) = std::str::from_utf8(&value[1..value.len() - 1]) {
                     if !path.is_empty() {
-                        // Expand ~ to home directory
-                        let expanded_path = if path.starts_with("~/") {
-                            if let Ok(home) = std::env::var("HOME") {
-                                path.replacen("~", &home, 1)
-                            } else {
-                                path
-                            }
-                        } else {
-                            path
-                        };
-                        config.custom_art = Some(expanded_path);
+                        let expanded = expand_home_path(path);
+                        config.custom_art = Some(expanded);
                     }
                 }
             }
         }
 
-        // Parse image toggle
-        if line.starts_with("image") && !line.starts_with("image_path") {
-            if let Some(value) = line.split('=').nth(1) {
-                let value = value.trim();
-                config.image = value == "true";
-            }
+        // Parse image toggle (but not image_path)
+        if key == b"image" {
+            config.image = value == b"true";
         }
 
         // Parse image_path setting
-        if line.starts_with("image_path") {
-            if let Some(value) = line.split('=').nth(1) {
-                let value = value.trim();
-                if value.starts_with('"') && value.ends_with('"') {
-                    let path = value.trim_matches('"').to_string();
+        if key == b"image_path" {
+            if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                if let Ok(path) = std::str::from_utf8(&value[1..value.len() - 1]) {
                     if !path.is_empty() {
-                        // Expand ~ to home directory
-                        let expanded_path = if path.starts_with("~/") {
-                            if let Ok(home) = std::env::var("HOME") {
-                                path.replacen("~", &home, 1)
-                            } else {
-                                path
-                            }
-                        } else {
-                            path
-                        };
-                        config.image_path = Some(expanded_path);
+                        let expanded = expand_home_path(path);
+                        config.image_path = Some(expanded);
                     }
                 }
             }
@@ -304,4 +304,23 @@ fn parse_config(content: &str) -> Config {
     }
 
     config
+}
+
+// Trim leading and trailing whitespace from bytes
+#[inline]
+fn trim_bytes(bytes: &[u8]) -> &[u8] {
+    let start = bytes.iter().position(|&b| b != b' ' && b != b'\t').unwrap_or(bytes.len());
+    let end = bytes.iter().rposition(|&b| b != b' ' && b != b'\t').map(|p| p + 1).unwrap_or(start);
+    &bytes[start..end]
+}
+
+// Expand ~ to home directory
+#[inline]
+fn expand_home_path(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return path.replacen("~", &home, 1);
+        }
+    }
+    path.to_string()
 }

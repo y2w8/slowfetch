@@ -60,7 +60,7 @@ fn display_kitty_static(path: &Path, box_cols: u16, box_rows: u16) -> Result<Str
     Ok(kitty_image::WrappedCommand::new(command).to_string())
 }
 
-// Display image using direct (inline) transmission for terminals like Konsole
+// Display image using direct transmission for terminals like Konsole
 fn display_kitty_direct(path: &Path, box_cols: u16, box_rows: u16) -> Result<String, String> {
     use std::io::Write;
 

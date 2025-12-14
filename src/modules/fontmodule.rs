@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::env;
+use memchr::memmem;
 use super::userspacemodules::terminal;
 
 // Get the terminal font by parsing config files
@@ -47,22 +48,24 @@ fn font_from_kitty() -> Option<String> {
 fn font_from_alacritty() -> Option<String> {
     let home = env::var("HOME").ok()?;
     let path = format!("{}/.config/alacritty/alacritty.toml", home);
-    let content = fs::read_to_string(&path).ok()?;
+    let content = fs::read(&path).ok()?;
 
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with('#') || line.starts_with('[') {
-            continue;
-        }
-        // Match any line ending with family = "..."
-        if line.contains("family") && line.contains('=') {
-            if let Some(val) = line.split('=').nth(1) {
-                let font = val.trim().trim_matches('"').trim_matches('\'');
-                if !font.is_empty() {
-                    return Some(clean_font_name(font));
-                }
-            }
-        }
+    // Find "family" using SIMD search
+    let pos = memmem::find(&content, b"family")?;
+    let after = &content[pos..];
+
+    // Find '=' after family
+    let eq_pos = memchr::memchr(b'=', after)?;
+    let after_eq = &after[eq_pos + 1..];
+
+    // Find the quoted value
+    let quote1 = memchr::memchr(b'"', after_eq)?;
+    let after_quote = &after_eq[quote1 + 1..];
+    let quote2 = memchr::memchr(b'"', after_quote)?;
+
+    let font = std::str::from_utf8(&after_quote[..quote2]).ok()?.trim();
+    if !font.is_empty() {
+        return Some(clean_font_name(font));
     }
     None
 }
@@ -71,17 +74,20 @@ fn font_from_alacritty() -> Option<String> {
 fn font_from_foot() -> Option<String> {
     let home = env::var("HOME").ok()?;
     let path = format!("{}/.config/foot/foot.ini", home);
-    let content = fs::read_to_string(path).ok()?;
+    let content = fs::read(&path).ok()?;
 
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with("font=") && !line.starts_with('#') {
-            // Format: font=JetBrains Mono:size=12
-            let font = line.trim_start_matches("font=");
-            // Take just the font name, before any :size or :style
-            let font = font.split(':').next().unwrap_or(font);
-            return Some(clean_font_name(font));
-        }
+    // Find "font=" using SIMD search
+    let pos = memmem::find(&content, b"\nfont=")?;
+    let after = &content[pos + 6..]; // Skip "\nfont="
+
+    // Find end of line or ':' (for size specifier)
+    let end = memchr::memchr(b'\n', after).unwrap_or(after.len());
+    let colon = memchr::memchr(b':', after).unwrap_or(end);
+    let font_end = end.min(colon);
+
+    let font = std::str::from_utf8(&after[..font_end]).ok()?.trim();
+    if !font.is_empty() {
+        return Some(clean_font_name(font));
     }
     None
 }
@@ -119,13 +125,17 @@ fn font_from_konsole() -> Option<String> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "profile") {
-            if let Ok(content) = fs::read_to_string(&path) {
-                for line in content.lines() {
-                    if line.starts_with("Font=") {
-                        // Format: Font=JetBrains Mono,12,-1,5,50,0,0,0,0,0
-                        let font = line.trim_start_matches("Font=");
-                        let font = font.split(',').next().unwrap_or(font);
-                        return Some(clean_font_name(font));
+            if let Ok(content) = fs::read(&path) {
+                // Find "Font=" using SIMD search
+                if let Some(pos) = memmem::find(&content, b"\nFont=") {
+                    let after = &content[pos + 6..]; // Skip "\nFont="
+                    // Find end at newline or comma
+                    let end = memchr::memchr(b'\n', after).unwrap_or(after.len());
+                    let comma = memchr::memchr(b',', after).unwrap_or(end);
+                    let font_end = end.min(comma);
+
+                    if let Ok(font) = std::str::from_utf8(&after[..font_end]) {
+                        return Some(clean_font_name(font.trim()));
                     }
                 }
             }
@@ -193,32 +203,28 @@ fn clean_font_name(font: &str) -> String {
     let font = resolve_font_alias(font);
 
     // Remove common style suffixes if they appear at the end (case-insensitive)
-    let suffixes = [
-        " regular",
-        " medium",
-        " bold",
-        " italic",
-        " light",
-        " thin",
-        " semibold",
-        " extrabold",
-        " black",
+    let suffixes: &[&[u8]] = &[
+        b" regular", b" medium", b" bold", b" italic", b" light",
+        b" thin", b" semibold", b" extrabold", b" black",
     ];
 
     let mut result = font;
     let lower = result.to_lowercase();
-    for suffix in &suffixes {
-        if lower.ends_with(suffix) {
+    let lower_bytes = lower.as_bytes();
+    for suffix in suffixes {
+        if lower_bytes.ends_with(suffix) {
             result = result[..result.len() - suffix.len()].to_string();
             break;
         }
     }
 
-    // Convert "Nerd Font" to "NF"
-    result = result.replace("Nerd Font", "NF");
+    // Convert "Nerd Font" to "NF" using SIMD search
+    if memmem::find(result.as_bytes(), b"Nerd Font").is_some() {
+        result = result.replace("Nerd Font", "NF");
+    }
 
     // Trim " Mono" from end
-    if result.ends_with(" Mono") {
+    if result.as_bytes().ends_with(b" Mono") {
         result = result[..result.len() - 5].to_string();
     }
 

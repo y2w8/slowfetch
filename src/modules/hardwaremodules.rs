@@ -1,8 +1,7 @@
 // Hardware information modules for Slowfetch.
 // Contains functions hardware, what else did you expect idiot
 
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs;
 use std::process::Command;
 
 use memchr::{memchr_iter, memmem};
@@ -28,40 +27,44 @@ pub fn cpu() -> String {
 }
 
 // Fetch CPU info fresh (no cache)
-// Uses BufReader to stop reading after finding model name (avoids reading entire /proc/cpuinfo)
+// Uses byte-level parsing with memchr for speed
 fn cpu_fresh() -> String {
-    let model = if let Ok(file) = File::open("/proc/cpuinfo") {
-        let reader = BufReader::new(file);
-        let mut found_model: Option<String> = None;
+    let model = fs::read("/proc/cpuinfo").ok().and_then(|content| {
+        // Find "model name" using SIMD search
+        let needle = b"model name";
+        let pos = memmem::find(&content, needle)?;
+        let after_needle = &content[pos + needle.len()..];
 
-        for line in reader.lines().map_while(Result::ok) {
-            if line.starts_with("model name") {
-                if let Some(name) = line.split(':').nth(1) {
-                    let words: Vec<&str> = name.split_whitespace().collect();
-                    // Find where GPU info starts (e.g., "with Radeon Graphics", "w/ Intel UHD")
-                    let gpu_start = words.iter().position(|&w| {
-                        w.eq_ignore_ascii_case("with") || w.eq_ignore_ascii_case("w/")
-                    });
-                    let words = match gpu_start {
-                        Some(idx) => &words[..idx],
-                        None => &words[..],
-                    };
-                    found_model = Some(
-                        words
-                            .iter()
-                            .filter(|&&w| !w.ends_with("-Core") && w != "Processor")
-                            .copied()
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    );
-                    break; // Stop reading after finding model name
-                }
-            }
-        }
-        found_model
-    } else {
-        None
-    };
+        // Find the ':' separator
+        let colon_pos = memchr::memchr(b':', after_needle)?;
+        let after_colon = &after_needle[colon_pos + 1..];
+
+        // Find end of line
+        let line_end = memchr::memchr(b'\n', after_colon).unwrap_or(after_colon.len());
+        let name_bytes = &after_colon[..line_end];
+
+        // Convert to string and process
+        let name = std::str::from_utf8(name_bytes).ok()?;
+        let words: Vec<&str> = name.split_whitespace().collect();
+
+        // Find where GPU info starts (e.g., "with Radeon Graphics", "w/ Intel UHD")
+        let gpu_start = words
+            .iter()
+            .position(|&w| w.eq_ignore_ascii_case("with") || w.eq_ignore_ascii_case("w/"));
+        let words = match gpu_start {
+            Some(idx) => &words[..idx],
+            None => &words[..],
+        };
+
+        Some(
+            words
+                .iter()
+                .filter(|&&w| !w.ends_with("-Core") && w != "Processor")
+                .copied()
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    });
 
     let model = match model {
         Some(m) => m,
@@ -81,28 +84,34 @@ fn cpu_fresh() -> String {
 }
 
 // Get memory usage as a visual bar, 10 blocks = 100% usage
-// Uses BufReader to stop reading after finding MemTotal and MemAvailable
+// Uses byte-level parsing with memchr for speed
 pub fn memory() -> String {
     let mut total: u64 = 0;
     let mut available: u64 = 0;
 
-    if let Ok(file) = File::open("/proc/meminfo") {
-        let reader = BufReader::new(file);
-
-        for line in reader.lines().map_while(Result::ok) {
-            if line.starts_with("MemTotal:") {
-                if let Some(val) = line.split_whitespace().nth(1) {
-                    total = val.parse().unwrap_or(0);
-                }
-            } else if line.starts_with("MemAvailable:") {
-                if let Some(val) = line.split_whitespace().nth(1) {
-                    available = val.parse().unwrap_or(0);
+    if let Ok(content) = fs::read("/proc/meminfo") {
+        // Find MemTotal using SIMD search
+        if let Some(pos) = memmem::find(&content, b"MemTotal:") {
+            let after = &content[pos + 9..]; // "MemTotal:" is 9 bytes
+            // Skip whitespace and find the number
+            if let Some(start) = after.iter().position(|&b| b.is_ascii_digit()) {
+                let num_start = &after[start..];
+                let end = num_start.iter().position(|&b| !b.is_ascii_digit()).unwrap_or(num_start.len());
+                if let Ok(s) = std::str::from_utf8(&num_start[..end]) {
+                    total = s.parse().unwrap_or(0);
                 }
             }
-            // MemTotal is line 1, MemAvailable is line 3 in /proc/meminfo
-            // Stop reading once we have both values
-            if total > 0 && available > 0 {
-                break;
+        }
+
+        // Find MemAvailable using SIMD search
+        if let Some(pos) = memmem::find(&content, b"MemAvailable:") {
+            let after = &content[pos + 13..]; // "MemAvailable:" is 13 bytes
+            if let Some(start) = after.iter().position(|&b| b.is_ascii_digit()) {
+                let num_start = &after[start..];
+                let end = num_start.iter().position(|&b| !b.is_ascii_digit()).unwrap_or(num_start.len());
+                if let Ok(s) = std::str::from_utf8(&num_start[..end]) {
+                    available = s.parse().unwrap_or(0);
+                }
             }
         }
     }
@@ -267,16 +276,30 @@ fn gpu_from_sysfs() -> Option<String> {
         let (vendor_name, devices) = pci_db.get(&vendor_id)?;
         let device_name = devices.get(&device_id)?;
 
-        // Extract the part in brackets if present
-        let display_name = device_name
-            .find('[')
-            .and_then(|start| device_name.rfind(']').map(|end| &device_name[start + 1..end]))
+        // Extract the part in brackets if present using byte-level search
+        let device_bytes = device_name.as_bytes();
+        let display_name = memchr::memchr(b'[', device_bytes)
+            .and_then(|start| {
+                // Search backwards from end for ']'
+                device_bytes.iter().rposition(|&b| b == b']').map(|end| {
+                    std::str::from_utf8(&device_bytes[start + 1..end]).unwrap_or(device_name)
+                })
+            })
             .unwrap_or(device_name);
 
-        let vendor_short = vendor_name
-            .find('[')
-            .and_then(|start| vendor_name.rfind(']').map(|end| &vendor_name[start + 1..end]))
-            .and_then(|s| s.split('/').next())
+        let vendor_bytes = vendor_name.as_bytes();
+        let vendor_short = memchr::memchr(b'[', vendor_bytes)
+            .and_then(|start| {
+                vendor_bytes.iter().rposition(|&b| b == b']').and_then(|end| {
+                    let bracketed = std::str::from_utf8(&vendor_bytes[start + 1..end]).ok()?;
+                    // Find first '/' using memchr
+                    let slash_pos = memchr::memchr(b'/', bracketed.as_bytes());
+                    Some(match slash_pos {
+                        Some(p) => &bracketed[..p],
+                        None => bracketed,
+                    })
+                })
+            })
             .unwrap_or("GPU");
 
         return Some(format!("{} {}", vendor_short, display_name));
@@ -524,25 +547,35 @@ pub fn screen() -> Vec<(String, String)> {
         .ok();
 
     if let Some(out) = output {
-        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stdout = &out.stdout;
         // Store (is_primary, display_string)
         let mut screens: Vec<(bool, String)> = Vec::new();
         let mut current_is_primary = false;
         let mut current_is_portrait = false;
 
-        for line in stdout.lines() {
-            // Check for output connection line (e.g., "DP-3 connected primary 2560x1440...")
-            if line.contains(" connected") {
-                current_is_primary = line.contains(" primary ");
-                // Portrait mode indicated by "left" or "right" rotation before the parentheses
-                // The part in parentheses lists available rotations, not current rotation
-                let before_paren = line.split('(').next().unwrap_or(line);
-                current_is_portrait =
-                    before_paren.contains(" left") || before_paren.contains(" right");
+        // Process line by line using memchr
+        let mut start = 0;
+        for end in memchr_iter(b'\n', stdout) {
+            let line = &stdout[start..end];
+            start = end + 1;
+
+            // Check for output connection line using SIMD search
+            if memmem::find(line, b" connected").is_some() {
+                current_is_primary = memmem::find(line, b" primary ").is_some();
+                // Portrait mode: check for " left" or " right" before '('
+                let before_paren = memchr::memchr(b'(', line)
+                    .map(|p| &line[..p])
+                    .unwrap_or(line);
+                current_is_portrait = memmem::find(before_paren, b" left").is_some()
+                    || memmem::find(before_paren, b" right").is_some();
             }
             // Look for lines indicating the active mode (contains *)
-            else if line.contains('*') {
-                let parts: Vec<&str> = line.split_whitespace().collect();
+            else if memchr::memchr(b'*', line).is_some() {
+                let line_str = match std::str::from_utf8(line) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                let parts: Vec<&str> = line_str.split_whitespace().collect();
                 if parts.len() >= 2 {
                     let res = parts[0];
                     // Rate often looks like "60.00*+" or "144.00*" or "59.95*"
@@ -550,7 +583,7 @@ pub fn screen() -> Vec<(String, String)> {
                     let rate_str = parts[1];
                     let rate: String = rate_str
                         .chars()
-                        .filter(|c| c.is_digit(10) || *c == '.')
+                        .filter(|c| c.is_ascii_digit() || *c == '.')
                         .collect();
 
                     // Orientation icon: 󰆠 for landscape, 󰆡 for portrait

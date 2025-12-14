@@ -2,6 +2,7 @@
 
 use crate::visuals::colorcontrol::{color_border, color_key, color_title, color_value};
 use crate::visuals::terminalsize::get_terminal_size;
+use memchr::memchr;
 
 // Box drawing characters (as &str for easier concatenation)
 const BOX_TOP_LEFT: &str = "╭";
@@ -11,41 +12,46 @@ const BOX_BOTTOM_RIGHT: &str = "╯";
 const BOX_HORIZONTAL: &str = "─";
 const BOX_VERTICAL: &str = "│";
 
-//Calculate the visible character width of a string, ignoring ANSI escape codes.
-//
-// ANSI codes (like color sequences) add bytes but don't take up visual space.
-// This function iterates through bytes for speed since ANSI sequences are ASCII.
-// For UTF-8 multi-byte characters, only the start byte is counted.
-pub fn visible_len(text: &str) -> usize {
-    let mut visible_char_count = 0;
-    let mut inside_ansi_escape = false;
-    let bytes = text.as_bytes();
-    let mut byte_index = 0;
-
-    while byte_index < bytes.len() {
-        let current_byte = bytes[byte_index];
-
-        if current_byte == 0x1b {
-            // Found escape character (0x1b = ESC), start of ANSI sequence
-            inside_ansi_escape = true;
-        } else if inside_ansi_escape {
-            // Inside ANSI sequence, wait for 'm' which terminates color codes
-            if current_byte == b'm' {
-                inside_ansi_escape = false;
-            }
-        } else if current_byte < 0x80 {
-            // Standard ASCII character (0x00-0x7F) - counts as one visible char
-            visible_char_count += 1;
-        } else {
-            // UTF-8 multi-byte character: only count the start byte (0xC0-0xFF)
-            // Continuation bytes (0x80-0xBF) are skipped to avoid double-counting
-            if (current_byte & 0xC0) != 0x80 {
-                visible_char_count += 1;
-            }
+// Count visible characters in a byte slice (no ANSI sequences)
+// Counts ASCII bytes and UTF-8 start bytes (skips continuation bytes)
+#[inline]
+fn count_visible_bytes(bytes: &[u8]) -> usize {
+    let mut count = 0;
+    for &b in bytes {
+        if b < 0x80 {
+            // ASCII byte
+            count += 1;
+        } else if (b & 0xC0) != 0x80 {
+            // UTF-8 start byte (not a continuation byte)
+            count += 1;
         }
-        byte_index += 1;
     }
-    visible_char_count
+    count
+}
+
+// Calculate the visible character width of a string, ignoring ANSI escape codes.
+// Uses SIMD-accelerated memchr to find escape sequences quickly.
+pub fn visible_len(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    let mut visible = 0;
+    let mut pos = 0;
+
+    // Use SIMD to find each ESC (0x1b) byte
+    while let Some(esc_offset) = memchr(0x1b, &bytes[pos..]) {
+        let esc_pos = pos + esc_offset;
+        // Count visible chars before this escape sequence
+        visible += count_visible_bytes(&bytes[pos..esc_pos]);
+        // Find the 'm' that ends the ANSI sequence
+        if let Some(m_offset) = memchr(b'm', &bytes[esc_pos..]) {
+            pos = esc_pos + m_offset + 1;
+        } else {
+            // Malformed: no 'm' found, skip rest of string
+            return visible;
+        }
+    }
+    // Count remaining visible chars after last escape sequence
+    visible += count_visible_bytes(&bytes[pos..]);
+    visible
 }
 
 // A section of system info with a title and content lines (key, value pairs).
