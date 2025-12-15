@@ -17,11 +17,15 @@
 #image_path = "~/.config/slowfetch/image.png"
 
 [colors]
-## Theme colors - use web hex format
-# border = "#FF79C6"  # Box borders (default: magenta/pink)
-# title = "#FF79C6"   # Section titles (default: magenta/pink)
-# key = "#BD93F9"     # Info keys (default: purple)
-# value = "#8BE9FD"   # Info values (default: cyan)
+## Theme preset - sets border, title, key, and value colors
+## Available: "dracula" (default), "catppuccin", "nord", "gruvbox", "eldritch", "kanagawa"
+# theme = "dracula"
+
+## Individual theme colors - override the presets above (use web hex format)
+# border = "#FF79C6"  # Box borders
+# title = "#FF79C6"   # Section titles
+# key = "#BD93F9"     # Info keys
+# value = "#8BE9FD"   # Info values
 
 ## ASCII art colors - maps to {1} through {9} in art files
 ## Default: rainbow spectrum

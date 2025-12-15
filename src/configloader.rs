@@ -36,14 +36,89 @@ pub struct ColorConfig {
     pub art_9: (u8, u8, u8),
 }
 
+// Theme presets for theme colors (border, title, key, value)
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ThemePreset {
+    #[default]
+    Dracula,
+    Catppuccin,
+    Nord,
+    Gruvbox,
+    Eldritch,
+    Kanagawa,
+}
+
+impl ThemePreset {
+    // Parse theme name from string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "dracula" => Some(Self::Dracula),
+            "catppuccin" | "catppuccin-mocha" | "mocha" => Some(Self::Catppuccin),
+            "nord" => Some(Self::Nord),
+            "gruvbox" | "gruvbox-dark" => Some(Self::Gruvbox),
+            "eldritch" => Some(Self::Eldritch),
+            "kanagawa" | "kanagawa-wave" | "wave" => Some(Self::Kanagawa),
+            _ => None,
+        }
+    }
+
+    // Get theme colors: (border, title, key, value)
+    pub fn colors(self) -> ((u8, u8, u8), (u8, u8, u8), (u8, u8, u8), (u8, u8, u8)) {
+        match self {
+            Self::Dracula => (
+                (0xFF, 0x79, 0xC6), // border: #FF79C6 - pink
+                (0xFF, 0x79, 0xC6), // title:  #FF79C6 - pink
+                (0xBD, 0x93, 0xF9), // key:    #BD93F9 - purple
+                (0x8B, 0xE9, 0xFD), // value:  #8BE9FD - cyan
+            ),
+            Self::Catppuccin => (
+                // Catppuccin Mocha - https://catppuccin.com/palette
+                (0xF3, 0x8B, 0xA8), // border: #F5C2E7 - pinky red
+                (0xCB, 0xA6, 0xF7), // title:  #CBA6F7 - mauve
+                (0x89, 0xB4, 0xFA), // key:    #89B4FA - blue
+                (0xF5, 0xC2, 0xE7), // value:  #F38BA8 - pink
+            ),
+            Self::Nord => (
+                // Nord - https://nordtheme.com/docs/colors-and-palettes
+                (0xB4, 0x8E, 0xAD), // border: #B48EAD - nord15 purple
+                (0x88, 0xC0, 0xD0), // title:  #88C0D0 - nord8 frost cyan
+                (0x81, 0xA1, 0xC1), // key:    #81A1C1 - nord9 frost blue
+                (0x5E, 0x81, 0xAC), // value:  #5E81AC - nord10 frost dark blue
+            ),
+            Self::Gruvbox => (
+                // Gruvbox Dark - https://github.com/morhetz/gruvbox
+                (0xB8, 0xBB, 0x26), // border: #B8BB26 - bright green
+                (0xFB, 0x49, 0x34), // title:  #FB4934 - bright red
+                (0xFA, 0xBD, 0x2F), // key:    #FABD2F - bright yellow
+                (0x83, 0xA5, 0x98), // value:  #83A598 - bright blue
+            ),
+            Self::Eldritch => (
+                // Eldritch - https://github.com/eldritch-theme/eldritch
+                (0xF2, 0x65, 0xB5), // border: #F265B5 - pink
+                (0xA4, 0x8C, 0xF2), // title:  #A48CF2 - purple
+                (0x37, 0xF4, 0x99), // key:    #37F499 - green
+                (0x04, 0xD1, 0xF9), // value:  #04D1F9 - cyan
+            ),
+            Self::Kanagawa => (
+                // Kanagawa Wave - https://github.com/rebelot/kanagawa.nvim
+                (0xC0, 0xA3, 0x6E), // border: #76946A - boatYellow2
+                (0x76, 0x94, 0x6A), // title:  #C0A36E - autumnGreen
+                (0x7E, 0x9C, 0xD8), // key:    #7E9CD8 - crystalBlue
+                (0x98, 0xBB, 0x6C), // value:  #98BB6C - springGreen
+            ),
+        }
+    }
+}
+
 impl Default for ColorConfig {
     fn default() -> Self {
+        let (border, title, key, value) = ThemePreset::default().colors();
         Self {
-            // Default theme colors (Dracula-inspired)
-            border: (0xFF, 0x79, 0xC6), // #FF79C6 - magenta/pink
-            title: (0xFF, 0x79, 0xC6),  // #FF79C6 - magenta/pink
-            key: (0xBD, 0x93, 0xF9),    // #BD93F9 - purple
-            value: (0x8B, 0xE9, 0xFD),  // #8BE9FD - cyan
+            // Default theme colors (Dracula)
+            border,
+            title,
+            key,
+            value,
             // Default art colors (rainbow spectrum)
             art_1: (0xFF, 0x00, 0x00), // #FF0000 - Red
             art_2: (0xFF, 0x80, 0x00), // #FF8000 - Orange
@@ -191,8 +266,52 @@ fn parse_config(content: &str) -> Config {
     let bytes = content.as_bytes();
     let mut in_colors_section = false;
 
-    // Process line by line using memchr
+    // First pass: look for theme preset (so individual colors can override it)
     let mut start = 0;
+    for end in memchr_iter(b'\n', bytes).chain(std::iter::once(bytes.len())) {
+        let line = &bytes[start..end];
+        start = end + 1;
+
+        if line.is_empty() {
+            continue;
+        }
+
+        let first_nonws = match line.iter().position(|&b| b != b' ' && b != b'\t') {
+            Some(p) => p,
+            None => continue,
+        };
+        let line = &line[first_nonws..];
+
+        if line.first() == Some(&b'#') || line.first() == Some(&b'[') {
+            continue;
+        }
+
+        let eq_pos = match memchr(b'=', line) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        let key = trim_bytes(&line[..eq_pos]);
+        let value = trim_bytes(&line[eq_pos + 1..]);
+
+        if key == b"theme" {
+            if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                if let Ok(theme_name) = std::str::from_utf8(&value[1..value.len() - 1]) {
+                    if let Some(preset) = ThemePreset::from_str(theme_name) {
+                        let (border, title, key, val) = preset.colors();
+                        config.colors.border = border;
+                        config.colors.title = title;
+                        config.colors.key = key;
+                        config.colors.value = val;
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    // Second pass: process all settings (individual colors override theme)
+    start = 0;
     for end in memchr_iter(b'\n', bytes).chain(std::iter::once(bytes.len())) {
         let line = &bytes[start..end];
         start = end + 1;
