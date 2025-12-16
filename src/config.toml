@@ -4,7 +4,7 @@
 ## Show OS-specific art instead of default Slowfetch logo
 ## Set to true to auto-detect OS, or specify OS name to force that logo
 # os_art = "arch"
-#os_art = false
+# os_art = false
 
 ## Custom ASCII art file path (overrides default and OS art)
 ## The file can use {1} through {9} for color placeholders
@@ -14,7 +14,7 @@
 ## Set to true to always show an image (uses default Slowfetch image if no path set)
 # image = false
 ## Optionally set a custom image path (supports ~ for home directory)
-#image_path = "~/.config/slowfetch/image.png"
+# image_path = "~/.config/slowfetch/image.png"
 
 [colors]
 ## Theme preset - sets border, title, key, and value colors
