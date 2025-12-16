@@ -18,8 +18,9 @@
 
 [colors]
 ## Theme preset - sets border, title, key, and value colors
-## Available: "dracula" (default), "catppuccin", "nord", "gruvbox", "eldritch", "kanagawa"
-# theme = "dracula"
+## Available: "default" or "tty", "dracula", "catppuccin", "nord", "gruvbox", "eldritch", "kanagawa"
+## Default uses your terminal's color scheme
+# theme = "default"
 
 ## Individual theme colors - override the presets above (use web hex format)
 # border = "#FF79C6"  # Box borders

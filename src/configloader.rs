@@ -16,14 +16,22 @@ pub enum OsArtSetting {
     Specific(String),
 }
 
-// Color configuration - all colors stored as RGB tuples
+// Theme color - can be RGB or ANSI (0-15)
+#[derive(Debug, Clone, Copy)]
+pub enum ThemeColor {
+    Rgb(u8, u8, u8),
+    Ansi(u8), // ANSI color code 0-15
+}
+
+// Color configuration - theme colors can be RGB or ANSI
+// Art colors are always RGB tuples
 #[derive(Debug, Clone)]
 pub struct ColorConfig {
     // Theme colors
-    pub border: (u8, u8, u8),
-    pub title: (u8, u8, u8),
-    pub key: (u8, u8, u8),
-    pub value: (u8, u8, u8),
+    pub border: ThemeColor,
+    pub title: ThemeColor,
+    pub key: ThemeColor,
+    pub value: ThemeColor,
     // ASCII art colors (1-9)
     pub art_1: (u8, u8, u8),
     pub art_2: (u8, u8, u8),
@@ -37,9 +45,11 @@ pub struct ColorConfig {
 }
 
 // Theme presets for theme colors (border, title, key, value)
+// Default uses None to indicate "use terminal's default colors"
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ThemePreset {
     #[default]
+    Default,
     Dracula,
     Catppuccin,
     Nord,
@@ -52,59 +62,67 @@ impl ThemePreset {
     // Parse theme name from string
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
+            "default" | "terminal" | "tty" => Some(Self::Default),
             "dracula" => Some(Self::Dracula),
-            "catppuccin" | "catppuccin-mocha" | "mocha" => Some(Self::Catppuccin),
+            "catppuccin" | "cat" => Some(Self::Catppuccin),
             "nord" => Some(Self::Nord),
-            "gruvbox" | "gruvbox-dark" => Some(Self::Gruvbox),
+            "gruvbox" | "gruv" => Some(Self::Gruvbox),
             "eldritch" => Some(Self::Eldritch),
-            "kanagawa" | "kanagawa-wave" | "wave" => Some(Self::Kanagawa),
+            "kanagawa" | "kana" => Some(Self::Kanagawa),
             _ => None,
         }
     }
 
     // Get theme colors: (border, title, key, value)
-    pub fn colors(self) -> ((u8, u8, u8), (u8, u8, u8), (u8, u8, u8), (u8, u8, u8)) {
+    pub fn colors(self) -> (ThemeColor, ThemeColor, ThemeColor, ThemeColor) {
         match self {
+            // Default: ANSI 1 (red), 3 (yellow), 4 (blue), 5 (magenta)
+            Self::Default => (
+                ThemeColor::Ansi(4), // border: magenta
+                ThemeColor::Ansi(5), // title:  pink
+                ThemeColor::Ansi(5), // key:    pink
+                ThemeColor::Ansi(6), // value:  light blue
+            ),
             Self::Dracula => (
-                (0xFF, 0x79, 0xC6), // border: #FF79C6 - pink
-                (0xFF, 0x79, 0xC6), // title:  #FF79C6 - pink
-                (0xBD, 0x93, 0xF9), // key:    #BD93F9 - purple
-                (0x8B, 0xE9, 0xFD), // value:  #8BE9FD - cyan
+                ThemeColor::Rgb(0xFF, 0x79, 0xC6), // border: #FF79C6 - pink
+                ThemeColor::Rgb(0xFF, 0x79, 0xC6), // title:  #FF79C6 - pink
+                ThemeColor::Rgb(0xBD, 0x93, 0xF9), // key:    #BD93F9 - purple
+                ThemeColor::Rgb(0x8B, 0xE9, 0xFD), // value:  #8BE9FD - cyan
             ),
             Self::Catppuccin => (
                 // Catppuccin Mocha - https://catppuccin.com/palette
-                (0xF3, 0x8B, 0xA8), // border: #F5C2E7 - pinky red
-                (0xCB, 0xA6, 0xF7), // title:  #CBA6F7 - mauve
-                (0x89, 0xB4, 0xFA), // key:    #89B4FA - blue
-                (0xF5, 0xC2, 0xE7), // value:  #F38BA8 - pink
+                ThemeColor::Rgb(0xF3, 0x8B, 0xA8), // border: #F5C2E7 - pinky red
+                ThemeColor::Rgb(0xCB, 0xA6, 0xF7), // title:  #CBA6F7 - mauve
+                ThemeColor::Rgb(0x89, 0xB4, 0xFA), // key:    #89B4FA - blue
+                ThemeColor::Rgb(0xF5, 0xC2, 0xE7), // value:  #F38BA8 - pink
             ),
             Self::Nord => (
                 // Nord - https://nordtheme.com/docs/colors-and-palettes
-                (0xB4, 0x8E, 0xAD), // border: #B48EAD - nord15 purple
-                (0x88, 0xC0, 0xD0), // title:  #88C0D0 - nord8 frost cyan
-                (0x81, 0xA1, 0xC1), // key:    #81A1C1 - nord9 frost blue
-                (0x5E, 0x81, 0xAC), // value:  #5E81AC - nord10 frost dark blue
+                ThemeColor::Rgb(0xB4, 0x8E, 0xAD), // border: #B48EAD - nord15 purple
+                ThemeColor::Rgb(0x88, 0xC0, 0xD0), // title:  #88C0D0 - nord8 frost cyan
+                ThemeColor::Rgb(0x81, 0xA1, 0xC1), // key:    #81A1C1 - nord9 frost blue
+                ThemeColor::Rgb(0x5E, 0x81, 0xAC), // value:  #5E81AC - nord10 frost dark blue
             ),
             Self::Gruvbox => (
                 // Gruvbox Dark - https://github.com/morhetz/gruvbox
-                (0xB8, 0xBB, 0x26), // border: #B8BB26 - bright green
-                (0xFB, 0x49, 0x34), // title:  #FB4934 - bright red
-                (0xFA, 0xBD, 0x2F), // key:    #FABD2F - bright yellow
-                (0x83, 0xA5, 0x98), // value:  #83A598 - bright blue
+                ThemeColor::Rgb(0xB8, 0xBB, 0x26), // border: #B8BB26 - bright green
+                ThemeColor::Rgb(0xFB, 0x49, 0x34), // title:  #FB4934 - bright red
+                ThemeColor::Rgb(0xFA, 0xBD, 0x2F), // key:    #FABD2F - bright yellow
+                ThemeColor::Rgb(0x83, 0xA5, 0x98), // value:  #83A598 - bright blue
             ),
             Self::Eldritch => (
                 // Eldritch - https://github.com/eldritch-theme/eldritch
-                (0xF2, 0x65, 0xB5), // border: #F265B5 - pink
-                (0xA4, 0x8C, 0xF2), // title:  #A48CF2 - purple
-                (0x37, 0xF4, 0x99), // key:    #37F499 - green
-                (0x04, 0xD1, 0xF9), // value:  #04D1F9 - cyan
+                ThemeColor::Rgb(0xF2, 0x65, 0xB5), // border: #F265B5 - pink
+                ThemeColor::Rgb(0xA4, 0x8C, 0xF2), // title:  #A48CF2 - purple
+                ThemeColor::Rgb(0x37, 0xF4, 0x99), // key:    #37F499 - green
+                ThemeColor::Rgb(0x04, 0xD1, 0xF9), // value:  #04D1F9 - cyan
             ),
             Self::Kanagawa => (
                 // Kanagawa Wave - https://github.com/rebelot/kanagawa.nvim
-                (0xC0, 0xA3, 0x6E), // border: #76946A - boatYellow2
-                (0x76, 0x94, 0x6A), // title:  #C0A36E - autumnGreen
-                (0x7E, 0x9C, 0xD8), // key:    #7E9CD8 - crystalBlue
-                (0x98, 0xBB, 0x6C), // value:  #98BB6C - springGreen
+                ThemeColor::Rgb(0xC0, 0xA3, 0x6E), // border: #76946A - boatYellow2
+                ThemeColor::Rgb(0x76, 0x94, 0x6A), // title:  #C0A36E - autumnGreen
+                ThemeColor::Rgb(0x7E, 0x9C, 0xD8), // key:    #7E9CD8 - crystalBlue
+                ThemeColor::Rgb(0x98, 0xBB, 0x6C), // value:  #98BB6C - springGreen
             ),
         }
     }
@@ -114,7 +132,7 @@ impl Default for ColorConfig {
     fn default() -> Self {
         let (border, title, key, value) = ThemePreset::default().colors();
         Self {
-            // Default theme colors (Dracula)
+            // Default theme colors (uses terminal defaults)
             border,
             title,
             key,
@@ -357,10 +375,10 @@ fn parse_config(content: &str) -> Config {
             if let (Ok(key_str), Ok(value_str)) = (std::str::from_utf8(key), std::str::from_utf8(value)) {
                 if let Some(color) = parse_hex_color(value_str) {
                     match key_str {
-                        "border" => config.colors.border = color,
-                        "title" => config.colors.title = color,
-                        "key" => config.colors.key = color,
-                        "value" => config.colors.value = color,
+                        "border" => config.colors.border = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "title" => config.colors.title = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "key" => config.colors.key = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "value" => config.colors.value = ThemeColor::Rgb(color.0, color.1, color.2),
                         "art_1" => config.colors.art_1 = color,
                         "art_2" => config.colors.art_2 = color,
                         "art_3" => config.colors.art_3 = color,

@@ -2,9 +2,9 @@
 // Provides hex color support and centralized color definitions
 // Colors are loaded from config.toml at runtime
 
-use crate::configloader::ColorConfig;
+use crate::configloader::{ColorConfig, ThemeColor};
 use std::sync::OnceLock;
-use tintify::{DynColors, TintColorize};
+use tintify::{DynColors, TintColorize, AnsiColors};
 
 // Global color config, initialized once from config file
 static COLORS: OnceLock<ColorConfig> = OnceLock::new();
@@ -35,23 +35,50 @@ pub fn get_art_colors() -> Vec<DynColors> {
     ]
 }
 
+// Helper to apply a ThemeColor to text
+fn apply_color(text: &str, color: ThemeColor) -> String {
+    match color {
+        ThemeColor::Rgb(r, g, b) => text.truecolor(r, g, b).to_string(),
+        ThemeColor::Ansi(code) => text.color(ansi_to_color(code)).to_string(),
+    }
+}
+
+// Convert ANSI code to AnsiColors
+fn ansi_to_color(code: u8) -> AnsiColors {
+    match code {
+        0 => AnsiColors::Black,
+        1 => AnsiColors::Red,
+        2 => AnsiColors::Green,
+        3 => AnsiColors::Yellow,
+        4 => AnsiColors::Blue,
+        5 => AnsiColors::Magenta,
+        6 => AnsiColors::Cyan,
+        7 => AnsiColors::White,
+        8 => AnsiColors::BrightBlack,
+        9 => AnsiColors::BrightRed,
+        10 => AnsiColors::BrightGreen,
+        11 => AnsiColors::BrightYellow,
+        12 => AnsiColors::BrightBlue,
+        13 => AnsiColors::BrightMagenta,
+        14 => AnsiColors::BrightCyan,
+        15 => AnsiColors::BrightWhite,
+        _ => AnsiColors::White, // fallback
+    }
+}
+
 // Color application functions
 pub fn color_border(text: &str) -> String {
-    let c = colors().border;
-    text.truecolor(c.0, c.1, c.2).to_string()
+    apply_color(text, colors().border)
 }
 
 pub fn color_title(text: &str) -> String {
-    let c = colors().title;
-    text.truecolor(c.0, c.1, c.2).to_string()
+    apply_color(text, colors().title)
 }
 
 pub fn color_key(text: &str) -> String {
-    let c = colors().key;
-    text.truecolor(c.0, c.1, c.2).to_string()
+    apply_color(text, colors().key)
 }
 
 pub fn color_value(text: &str) -> String {
-    let c = colors().value;
-    text.truecolor(c.0, c.1, c.2).to_string()
+    apply_color(text, colors().value)
 }
