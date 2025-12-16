@@ -44,6 +44,74 @@ pub struct ColorConfig {
     pub art_9: (u8, u8, u8),
 }
 
+// Toggle settings for Core section keys
+#[derive(Debug, Clone)]
+pub struct CoreToggles {
+    pub os: bool,
+    pub kernel: bool,
+    pub uptime: bool,
+}
+
+impl Default for CoreToggles {
+    fn default() -> Self {
+        Self {
+            os: true,
+            kernel: true,
+            uptime: true,
+        }
+    }
+}
+
+// Toggle settings for Hardware section keys
+#[derive(Debug, Clone)]
+pub struct HardwareToggles {
+    pub cpu: bool,
+    pub gpu: bool,
+    pub memory: bool,
+    pub storage: bool,
+    pub battery: bool,
+    pub screen: bool,
+}
+
+impl Default for HardwareToggles {
+    fn default() -> Self {
+        Self {
+            cpu: true,
+            gpu: true,
+            memory: true,
+            storage: true,
+            battery: true,
+            screen: true,
+        }
+    }
+}
+
+// Toggle settings for Userspace section keys
+#[derive(Debug, Clone)]
+pub struct UserspaceToggles {
+    pub packages: bool,
+    pub terminal: bool,
+    pub shell: bool,
+    pub wm: bool,
+    pub ui: bool,
+    pub editor: bool,
+    pub terminal_font: bool,
+}
+
+impl Default for UserspaceToggles {
+    fn default() -> Self {
+        Self {
+            packages: true,
+            terminal: true,
+            shell: true,
+            wm: true,
+            ui: true,
+            editor: true,
+            terminal_font: true,
+        }
+    }
+}
+
 // Theme presets for theme colors (border, title, key, value)
 // Default uses None to indicate "use terminal's default colors"
 #[derive(Debug, Clone, Copy, Default)]
@@ -158,6 +226,9 @@ pub struct Config {
     pub custom_art: Option<String>,
     pub image: bool,
     pub image_path: Option<String>,
+    pub core: CoreToggles,
+    pub hardware: HardwareToggles,
+    pub userspace: UserspaceToggles,
 }
 
 impl Default for Config {
@@ -168,6 +239,9 @@ impl Default for Config {
             custom_art: None,
             image: false,
             image_path: None,
+            core: CoreToggles::default(),
+            hardware: HardwareToggles::default(),
+            userspace: UserspaceToggles::default(),
         }
     }
 }
@@ -278,11 +352,22 @@ pub fn load_config() -> Config {
     parse_config(&content)
 }
 
+// Track which section we're currently parsing
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ConfigSection {
+    None,
+    Display,
+    Colors,
+    Core,
+    Hardware,
+    Userspace,
+}
+
 // Parse the TOML config content using byte-level operations
 fn parse_config(content: &str) -> Config {
     let mut config = Config::default();
     let bytes = content.as_bytes();
-    let mut in_colors_section = false;
+    let mut current_section = ConfigSection::None;
 
     // First pass: look for theme preset (so individual colors can override it)
     let mut start = 0;
@@ -353,7 +438,19 @@ fn parse_config(content: &str) -> Config {
 
         // Track sections
         if line.first() == Some(&b'[') {
-            in_colors_section = line == b"[colors]";
+            current_section = if line == b"[colors]" {
+                ConfigSection::Colors
+            } else if line == b"[display]" {
+                ConfigSection::Display
+            } else if line == b"[core]" {
+                ConfigSection::Core
+            } else if line == b"[hardware]" {
+                ConfigSection::Hardware
+            } else if line == b"[userspace]" {
+                ConfigSection::Userspace
+            } else {
+                ConfigSection::None
+            };
             continue;
         }
 
@@ -371,7 +468,7 @@ fn parse_config(content: &str) -> Config {
         let value = trim_bytes(value);
 
         // Parse color settings
-        if in_colors_section {
+        if current_section == ConfigSection::Colors {
             if let (Ok(key_str), Ok(value_str)) = (std::str::from_utf8(key), std::str::from_utf8(value)) {
                 if let Some(color) = parse_hex_color(value_str) {
                     match key_str {
@@ -436,6 +533,46 @@ fn parse_config(content: &str) -> Config {
                         config.image_path = Some(expanded);
                     }
                 }
+            }
+        }
+
+        // Parse core section toggles
+        if current_section == ConfigSection::Core {
+            let is_true = value == b"true";
+            match key {
+                b"os" => config.core.os = is_true,
+                b"kernel" => config.core.kernel = is_true,
+                b"uptime" => config.core.uptime = is_true,
+                _ => {}
+            }
+        }
+
+        // Parse hardware section toggles
+        if current_section == ConfigSection::Hardware {
+            let is_true = value == b"true";
+            match key {
+                b"cpu" => config.hardware.cpu = is_true,
+                b"gpu" => config.hardware.gpu = is_true,
+                b"memory" => config.hardware.memory = is_true,
+                b"storage" => config.hardware.storage = is_true,
+                b"battery" => config.hardware.battery = is_true,
+                b"screen" => config.hardware.screen = is_true,
+                _ => {}
+            }
+        }
+
+        // Parse userspace section toggles
+        if current_section == ConfigSection::Userspace {
+            let is_true = value == b"true";
+            match key {
+                b"packages" => config.userspace.packages = is_true,
+                b"terminal" => config.userspace.terminal = is_true,
+                b"shell" => config.userspace.shell = is_true,
+                b"wm" => config.userspace.wm = is_true,
+                b"ui" => config.userspace.ui = is_true,
+                b"editor" => config.userspace.editor = is_true,
+                b"terminal_font" => config.userspace.terminal_font = is_true,
+                _ => {}
             }
         }
     }

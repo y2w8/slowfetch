@@ -2,14 +2,13 @@
 
 mod cache;
 mod configloader;
+mod dostuff;
 mod helpers;
 mod modules;
 mod visuals;
 
 use clap::Parser;
 use configloader::OsArtSetting;
-use visuals::renderer::Section;
-use std::thread;
 
 // cmd line args, *claps*
 #[derive(Parser)]
@@ -40,76 +39,13 @@ fn main() {
     let config = configloader::load_config();
     visuals::colorcontrol::init_colors(config.colors.clone());
 
-    // Only spawn threads for slow I/O operations (subprocesses)
-    // These may run external commands like vulkaninfo, df, shell --version, etc.
-    let gpu_handler = thread::spawn(modules::hardwaremodules::gpu);
-    let storage_handler = thread::spawn(modules::hardwaremodules::storage);
-    let packages_handler = thread::spawn(modules::userspacemodules::packages);
-    let shell_handler = thread::spawn(modules::userspacemodules::shell);
-    let font_handler = thread::spawn(modules::fontmodule::find_font);
-    let screen_handler = thread::spawn(modules::hardwaremodules::screen);
-
-    // Fast operations - just file reads or env var checks, no benefit from threading
-    let os = modules::coremodules::os();
-    let kernel = modules::coremodules::kernel();
-    let uptime = modules::coremodules::uptime();
-    let cpu = modules::hardwaremodules::cpu();
-    let memory = modules::hardwaremodules::memory();
-    let battery = modules::hardwaremodules::laptop_battery();
-    let terminal = modules::userspacemodules::terminal();
-    let wm = modules::userspacemodules::wm();
-    let ui = modules::userspacemodules::ui();
-    let editor = modules::userspacemodules::editor();
+    // Load all sections based on config
+    let (core, hardware, userspace) = dostuff::load_sections(&config);
 
     // Load ASCII art synchronously - just reading static data
     let wide_logo = modules::asciimodule::get_wide_logo_lines();
     let medium_logo = modules::asciimodule::get_medium_logo_lines();
     let narrow_logo = modules::asciimodule::get_narrow_logo_lines();
-
-    // Collect results and build sections
-    let core = Section::new(
-        "Core",
-        vec![
-            ("OS".to_string(), os),
-            ("Kernel".to_string(), kernel),
-            ("Uptime".to_string(), uptime),
-        ],
-    );
-
-    let mut hardware_lines = vec![
-        ("CPU".to_string(), cpu),
-        ("GPU".to_string(), gpu_handler.join().unwrap_or_else(|_| "error".into())),
-        ("Memory".to_string(), memory),
-        ("Storage".to_string(), storage_handler.join().unwrap_or_else(|_| "error".into())),
-    ];
-
-    if battery != "unknown" {
-        hardware_lines.push(("Battery".to_string(), battery));
-    }
-
-    let screen_entries = screen_handler.join().unwrap_or_else(|_| vec![]);
-    hardware_lines.extend(screen_entries);
-
-    let hardware = Section::new("Hardware", hardware_lines);
-
-    let mut userspace_lines = vec![
-        ("Packages".to_string(), packages_handler.join().unwrap_or_else(|_| "error".into())),
-        ("Terminal".to_string(), terminal),
-        ("Shell".to_string(), shell_handler.join().unwrap_or_else(|_| "error".into())),
-        ("WM".to_string(), wm),
-        ("UI".to_string(), ui),
-    ];
-
-    if !editor.is_empty() {
-        userspace_lines.push(("Editor".to_string(), editor));
-    }
-
-    userspace_lines.push((
-        "Terminal Font".to_string(),
-        font_handler.join().unwrap_or_else(|_| "error".into()),
-    ));
-
-    let userspace = Section::new("Userspace", userspace_lines);
 
     // Check if image mode is requested (CLI arg or config) AND terminal supports it
     let use_image = args.image.is_some() || config.image;
