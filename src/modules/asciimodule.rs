@@ -8,9 +8,6 @@ use std::fs;
 // The ASCII art for the Slowfetch logo Wide version.
 const ASCII_ART_WIDE: &str = include_str!("../assets/default/wide.txt");
 
-// The ASCII art for the Slowfetch logo medium version.
-const ASCII_ART_MEDIUM: &str = include_str!("../assets/default/medium.txt");
-
 // The ASCII art for the Slowfetch logo narrow version.
 const ASCII_ART_NARROW: &str = include_str!("../assets/default/narrow.txt");
 
@@ -32,13 +29,6 @@ const ASCII_ART_NIX_SMOL: &str = include_str!("../assets/nixsmol.txt");
 pub fn get_wide_logo_lines() -> Vec<String> {
     let colors = get_art_colors();
     let art = AsciiArt::new(ASCII_ART_WIDE, &colors, true);
-    art.map(|line| line.to_string()).collect()
-}
-
-// Render the medium ASCII art logo and return lines as a Vec
-pub fn get_medium_logo_lines() -> Vec<String> {
-    let colors = get_art_colors();
-    let art = AsciiArt::new(ASCII_ART_MEDIUM, &colors, true);
     art.map(|line| line.to_string()).collect()
 }
 

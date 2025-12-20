@@ -42,9 +42,22 @@ fn main() {
     // Load all sections based on config
     let (core, hardware, userspace) = dostuff::load_sections(&config);
 
+    // Extract OS name before filtering (needed for OS art detection)
+    let os_name: String = core
+        .lines
+        .iter()
+        .find(|(k, _)| k == "OS")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+
+    // Filter out empty sections
+    let sections: Vec<_> = [core, hardware, userspace]
+        .into_iter()
+        .filter(|s| !s.lines.is_empty())
+        .collect();
+
     // Load ASCII art synchronously - just reading static data
     let wide_logo = modules::asciimodule::get_wide_logo_lines();
-    let medium_logo = modules::asciimodule::get_medium_logo_lines();
     let narrow_logo = modules::asciimodule::get_narrow_logo_lines();
 
     // Check if image mode is requested (CLI arg or config) AND terminal supports it
@@ -76,21 +89,16 @@ fn main() {
         };
 
         // Draw image layout (imagerender handles all the logic)
-        visuals::imagerender::draw_image_layout(&[core, hardware, userspace], image_path.as_deref());
+        visuals::imagerender::draw_image_layout(&sections, image_path.as_deref());
     } else {
         // Standard ASCII art mode
         // Check for custom art first (overrides everything else)
-        let (wide, medium, narrow, smol) = if let Some(ref custom_path) = config.custom_art {
+        let (wide, narrow, smol) = if let Some(ref custom_path) = config.custom_art {
             if let Some(custom_art) = modules::asciimodule::get_custom_art_lines(custom_path) {
-                (custom_art.clone(), custom_art.clone(), custom_art, None)
+                (custom_art.clone(), custom_art, None)
             } else {
                 // Custom art file not found, fall back to default
-                (
-                    wide_logo.clone(),
-                    medium_logo.clone(),
-                    narrow_logo.clone(),
-                    None,
-                )
+                (wide_logo.clone(), narrow_logo.clone(), None)
             }
         } else {
             // Determine OS art setting: CLI args override config
@@ -106,27 +114,21 @@ fn main() {
 
             // Apply OS art setting
             match os_art_setting {
-                OsArtSetting::Disabled => (wide_logo, medium_logo, narrow_logo, None),
+                OsArtSetting::Disabled => (wide_logo, narrow_logo, None),
                 OsArtSetting::Auto => {
-                    let os_name = core
-                        .lines
-                        .iter()
-                        .find(|(k, _)| k == "OS")
-                        .map(|(_, v)| v.as_str())
-                        .unwrap_or("");
-                    if let Some(os_logo) = modules::asciimodule::get_os_logo_lines(os_name) {
-                        let smol_logo = modules::asciimodule::get_os_logo_lines_smol(os_name);
-                        (os_logo.clone(), os_logo.clone(), os_logo, smol_logo)
+                    if let Some(os_logo) = modules::asciimodule::get_os_logo_lines(&os_name) {
+                        let smol_logo = modules::asciimodule::get_os_logo_lines_smol(&os_name);
+                        (os_logo.clone(), os_logo, smol_logo)
                     } else {
-                        (wide_logo, medium_logo, narrow_logo, None)
+                        (wide_logo, narrow_logo, None)
                     }
                 }
-                OsArtSetting::Specific(ref os_name) => {
-                    if let Some(os_logo) = modules::asciimodule::get_os_logo_lines(os_name) {
-                        let smol_logo = modules::asciimodule::get_os_logo_lines_smol(os_name);
-                        (os_logo.clone(), os_logo.clone(), os_logo, smol_logo)
+                OsArtSetting::Specific(ref specific_os) => {
+                    if let Some(os_logo) = modules::asciimodule::get_os_logo_lines(specific_os) {
+                        let smol_logo = modules::asciimodule::get_os_logo_lines_smol(specific_os);
+                        (os_logo.clone(), os_logo, smol_logo)
                     } else {
-                        (wide_logo, medium_logo, narrow_logo, None)
+                        (wide_logo, narrow_logo, None)
                     }
                 }
             }
@@ -134,13 +136,7 @@ fn main() {
 
         print!(
             "{}",
-            visuals::renderer::draw_layout(
-                &wide,
-                &medium,
-                &narrow,
-                &[core, hardware, userspace],
-                smol.as_deref()
-            )
+            visuals::renderer::draw_layout(&wide, &narrow, &sections, smol.as_deref())
         );
     }
 }

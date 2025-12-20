@@ -304,22 +304,19 @@ fn render_stacked(art_box: &[String], sections_box: &[String], output: &mut Stri
 // Draw ASCII art and system info sections with adaptive layout.
 //
 // Layout selection priority (based on terminal dimensions):
-//1. Wide art side-by-side (big rig)
+// 1. Wide art side-by-side (big rig)
 // 2. Smol art side-by-side
-// 3. Medium art side-by-side
-// 4. Smol art stacked (if terminal is tall enough but not wide neough)
-// 5. Narrow art stacked (default stacked layout)
-// 6. Sections only (if terminal is too small for any art)
+// 3. Smol art stacked (if terminal is tall enough but not wide enough)
+// 4. Narrow art stacked (default stacked layout)
+// 5. Sections only (if terminal is too small for any art)
 pub fn draw_layout(
     wide_art: &[String],
-    medium_art: &[String],
     narrow_art: &[String],
     sections: &[Section],
     smol_art: Option<&[String]>,
 ) -> String {
     // ---step 1: Calculate all art widths ---
     let wide_art_width = art_width(wide_art);
-    let medium_art_width = art_width(medium_art);
     let narrow_art_width = art_width(narrow_art);
     let smol_art_width = smol_art.map(art_width).unwrap_or(0);
 
@@ -342,7 +339,6 @@ pub fn draw_layout(
     let sections_box_width = sections_content_width + 4;
     let wide_side_by_side_width = wide_art_width + 4 + 1 + sections_box_width;
     let smol_side_by_side_width = smol_art_width + 4 + 1 + sections_box_width;
-    let medium_side_by_side_width = medium_art_width + 4 + 1 + sections_box_width;
 
     // ---step 4: Get terminal dimensions ---
     let (terminal_width, terminal_height) = get_terminal_size()
@@ -361,36 +357,63 @@ pub fn draw_layout(
     let mut output = String::new();
 
     if terminal_width >= wide_side_by_side_width {
-        // layout 1: Wide art side-by-side 
+        // layout 1: Wide art side-by-side
         let sections_box = build_sections_lines(sections, None);
-        let art_box = build_box(wide_art, None, None, Some(sections_box.len()), true);
-        render_side_by_side(&art_box, &sections_box, &mut output);
+        // If sections are shorter than wide art, use narrow art instead
+        let wide_art_box_height = wide_art.len() + 2;
+        if sections_box.len() < wide_art_box_height {
+            // Fall back to narrow art side-by-side
+            let narrow_side_by_side_width = narrow_art_width + 4 + 1 + sections_box_width;
+            if terminal_width >= narrow_side_by_side_width {
+                let art_box = build_box(narrow_art, None, None, Some(sections_box.len()), true);
+                render_side_by_side(&art_box, &sections_box, &mut output);
+            } else {
+                // Terminal too narrow for narrow art side-by-side, just use sections
+                for line in &sections_box {
+                    output.push_str(line);
+                    output.push('\n');
+                }
+            }
+        } else {
+            let art_box = build_box(wide_art, None, None, Some(sections_box.len()), true);
+            render_side_by_side(&art_box, &sections_box, &mut output);
+        }
     } else if smol_art.is_some() && terminal_width >= smol_side_by_side_width {
-        // layout 2: Smol art side-by-side 
+        // layout 2: Smol art side-by-side
         let smol_art_lines = smol_art.unwrap();
         let sections_box = build_sections_lines(sections, None);
-        let art_box = build_box(smol_art_lines, None, None, Some(sections_box.len()), true);
-        render_side_by_side(&art_box, &sections_box, &mut output);
-    } else if terminal_width >= medium_side_by_side_width {
-        // layuot 3: Medium art side-by-side
-        let sections_box = build_sections_lines(sections, None);
-        let art_box = build_box(medium_art, None, None, Some(sections_box.len()), true);
-        render_side_by_side(&art_box, &sections_box, &mut output);
+        let smol_art_box_height = smol_art_lines.len() + 2;
+        // If sections are shorter than smol art, fall back to narrow art
+        if sections_box.len() < smol_art_box_height {
+            let narrow_side_by_side_width = narrow_art_width + 4 + 1 + sections_box_width;
+            if terminal_width >= narrow_side_by_side_width {
+                let art_box = build_box(narrow_art, None, None, Some(sections_box.len()), true);
+                render_side_by_side(&art_box, &sections_box, &mut output);
+            } else {
+                for line in &sections_box {
+                    output.push_str(line);
+                    output.push('\n');
+                }
+            }
+        } else {
+            let art_box = build_box(smol_art_lines, None, None, Some(sections_box.len()), true);
+            render_side_by_side(&art_box, &sections_box, &mut output);
+        }
     } else if smol_art.is_some() && terminal_height >= sections_total_height + smol_art.unwrap().len() + 2 {
-        // layout 4: Smol art stacked 
+        // layout 3: Smol art stacked
         let smol_art_lines = smol_art.unwrap();
         let stacked_width = smol_art_width.max(sections_content_width);
         let art_box = build_box(smol_art_lines, None, Some(stacked_width), None, true);
         let sections_box = build_sections_lines(sections, Some(stacked_width));
         render_stacked(&art_box, &sections_box, &mut output);
     } else if terminal_height >= sections_total_height + narrow_art_box_height {
-        // layout 5: Narrow art stacked 
+        // layout 4: Narrow art stacked
         let stacked_width = narrow_art_width.max(sections_content_width);
         let art_box = build_box(narrow_art, None, Some(stacked_width), None, true);
         let sections_box = build_sections_lines(sections, Some(stacked_width));
         render_stacked(&art_box, &sections_box, &mut output);
     } else {
-        // layout 6: Sections only
+        // layout 5: Sections only
         let sections_box = build_sections_lines(sections, None);
         for line in &sections_box {
             output.push_str(line);

@@ -194,28 +194,118 @@ impl ThemePreset {
             ),
         }
     }
+
 }
+
+// Convert ThemeColor to RGB tuple
+fn theme_color_to_rgb(color: ThemeColor) -> (u8, u8, u8) {
+    match color {
+        ThemeColor::Rgb(r, g, b) => (r, g, b),
+        // Convert ANSI to approximate RGB values
+        ThemeColor::Ansi(code) => match code {
+            0 => (0, 0, 0),        // Black
+            1 => (205, 49, 49),    // Red
+            2 => (13, 188, 121),   // Green
+            3 => (229, 229, 16),   // Yellow
+            4 => (36, 114, 200),   // Blue
+            5 => (188, 63, 188),   // Magenta
+            6 => (17, 168, 205),   // Cyan
+            7 => (229, 229, 229),  // White
+            8 => (102, 102, 102),  // Bright Black
+            9 => (241, 76, 76),    // Bright Red
+            10 => (35, 209, 139),  // Bright Green
+            11 => (245, 245, 67),  // Bright Yellow
+            12 => (59, 142, 234),  // Bright Blue
+            13 => (214, 112, 214), // Bright Magenta
+            14 => (41, 184, 219),  // Bright Cyan
+            15 => (255, 255, 255), // Bright White
+            _ => (229, 229, 229),  // Fallback to white
+        },
+    }
+}
+
+// Linear interpolation between two colors
+fn lerp_color(c1: (u8, u8, u8), c2: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
+    let lerp = |a: u8, b: u8| -> u8 {
+        let a = a as f32;
+        let b = b as f32;
+        (a + (b - a) * t).round() as u8
+    };
+    (lerp(c1.0, c2.0), lerp(c1.1, c2.1), lerp(c1.2, c2.2))
+}
+
+// Default art colors (rainbow spectrum) - used to detect if user customized them
+pub const DEFAULT_ART_COLORS: [(u8, u8, u8); 9] = [
+    (0xFF, 0x00, 0x00), // #FF0000 - Red
+    (0xFF, 0x80, 0x00), // #FF8000 - Orange
+    (0xFF, 0xFF, 0x00), // #FFFF00 - Yellow
+    (0x00, 0xFF, 0x00), // #00FF00 - Green
+    (0x00, 0xFF, 0xFF), // #00FFFF - Cyan
+    (0x00, 0xBF, 0xFF), // #00BFFF - Light Blue
+    (0x55, 0x55, 0xFF), // #5555FF - Blue
+    (0xAA, 0x55, 0xFF), // #AA55FF - Violet
+    (0xFF, 0x55, 0xFF), // #FF55FF - Magenta
+];
 
 impl Default for ColorConfig {
     fn default() -> Self {
         let (border, title, key, value) = ThemePreset::default().colors();
         Self {
-            // Default theme colors (uses terminal defaults)
             border,
             title,
             key,
             value,
-            // Default art colors (rainbow spectrum)
-            art_1: (0xFF, 0x00, 0x00), // #FF0000 - Red
-            art_2: (0xFF, 0x80, 0x00), // #FF8000 - Orange
-            art_3: (0xFF, 0xFF, 0x00), // #FFFF00 - Yellow
-            art_4: (0x00, 0xFF, 0x00), // #00FF00 - Green
-            art_5: (0x00, 0xFF, 0xFF), // #00FFFF - Cyan
-            art_6: (0x00, 0xBF, 0xFF), // #00BFFF - Light Blue
-            art_7: (0x55, 0x55, 0xFF), // #5555FF - Blue
-            art_8: (0xAA, 0x55, 0xFF), // #AA55FF - Violet
-            art_9: (0xFF, 0x55, 0xFF), // #FF55FF - Magenta
+            art_1: DEFAULT_ART_COLORS[0],
+            art_2: DEFAULT_ART_COLORS[1],
+            art_3: DEFAULT_ART_COLORS[2],
+            art_4: DEFAULT_ART_COLORS[3],
+            art_5: DEFAULT_ART_COLORS[4],
+            art_6: DEFAULT_ART_COLORS[5],
+            art_7: DEFAULT_ART_COLORS[6],
+            art_8: DEFAULT_ART_COLORS[7],
+            art_9: DEFAULT_ART_COLORS[8],
         }
+    }
+}
+
+impl ColorConfig {
+    /// Check if art colors are still the default rainbow
+    pub fn has_default_art_colors(&self) -> bool {
+        self.art_1 == DEFAULT_ART_COLORS[0]
+            && self.art_2 == DEFAULT_ART_COLORS[1]
+            && self.art_3 == DEFAULT_ART_COLORS[2]
+            && self.art_4 == DEFAULT_ART_COLORS[3]
+            && self.art_5 == DEFAULT_ART_COLORS[4]
+            && self.art_6 == DEFAULT_ART_COLORS[5]
+            && self.art_7 == DEFAULT_ART_COLORS[6]
+            && self.art_8 == DEFAULT_ART_COLORS[7]
+            && self.art_9 == DEFAULT_ART_COLORS[8]
+    }
+
+    /// Generate gradient art colors from theme UI colors
+    /// Creates 9 colors by interpolating between border -> title -> key -> value -> border
+    pub fn generate_art_gradient(&self) -> [(u8, u8, u8); 9] {
+        let colors = [
+            theme_color_to_rgb(self.border),
+            theme_color_to_rgb(self.title),
+            theme_color_to_rgb(self.key),
+            theme_color_to_rgb(self.value),
+        ];
+
+        // Generate 9 colors by interpolating through the 4 theme colors in a cycle
+        let mut result = [(0u8, 0u8, 0u8); 9];
+        for i in 0..9 {
+            // Map 0-8 to positions along the 4-color gradient (with wrap-around)
+            let t = (i as f32) / 9.0 * 4.0;
+            let idx = t.floor() as usize;
+            let frac = t - t.floor();
+
+            let c1 = colors[idx % 4];
+            let c2 = colors[(idx + 1) % 4];
+
+            result[i] = lerp_color(c1, c2, frac);
+        }
+        result
     }
 }
 

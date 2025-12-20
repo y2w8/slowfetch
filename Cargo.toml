@@ -18,6 +18,7 @@ kitty_image = "0.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
 libc = "0.2"
 memchr = "2.7"
+ratatui = { version = "0.28.0", features = ["all-widgets"] }
 
 [profile.bench]
 debug = true

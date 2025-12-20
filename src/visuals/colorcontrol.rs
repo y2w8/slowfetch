@@ -20,8 +20,20 @@ fn colors() -> &'static ColorConfig {
 }
 
 // Get ASCII art colors as DynColors array for inkline
+// If art colors are still default, generate gradient from theme UI colors
 pub fn get_art_colors() -> Vec<DynColors> {
     let c = colors();
+
+    // If user hasn't customized art colors, generate gradient from theme colors
+    if c.has_default_art_colors() {
+        let gradient = c.generate_art_gradient();
+        return gradient
+            .iter()
+            .map(|&(r, g, b)| DynColors::Rgb(r, g, b))
+            .collect();
+    }
+
+    // Otherwise use the configured art colors
     vec![
         DynColors::Rgb(c.art_1.0, c.art_1.1, c.art_1.2),
         DynColors::Rgb(c.art_2.0, c.art_2.1, c.art_2.2),
