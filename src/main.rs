@@ -5,6 +5,7 @@ mod configloader;
 mod dostuff;
 mod helpers;
 mod modules;
+mod prettyconfig;
 mod visuals;
 
 use clap::Parser;
@@ -25,10 +26,23 @@ struct Args {
     // Display image instead of ASCII art (uses Kitty graphics protocol)
     #[arg(short = 'i', long = "image", num_args = 0..=1, default_missing_value = "")]
     image: Option<String>,
+
+    // Launch TUI configuration editor
+    #[arg(short = 'c', long = "config")]
+    config: bool,
 }
 
 fn main() {
     let args = Args::parse();
+
+    // Launch TUI config editor if --config/-c was passed
+    if args.config {
+        if let Err(e) = prettyconfig::run() {
+            eprintln!("Error running config editor: {}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
 
     // Set cache refresh flag if --refresh/-r was passed
     if args.refresh {

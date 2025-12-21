@@ -309,7 +309,7 @@ impl ColorConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub os_art: OsArtSetting,
     pub colors: ColorConfig,

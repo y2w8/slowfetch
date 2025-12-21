@@ -3,20 +3,35 @@
 // Colors are loaded from config.toml at runtime
 
 use crate::configloader::{ColorConfig, ThemeColor};
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 use tintify::{DynColors, TintColorize, AnsiColors};
 
 // Global color config, initialized once from config file
 static COLORS: OnceLock<ColorConfig> = OnceLock::new();
+
+// Override colors for preview mode (can be changed at runtime)
+static PREVIEW_COLORS: RwLock<Option<ColorConfig>> = RwLock::new(None);
 
 // Initialize colors from config - call this once at startup
 pub fn init_colors(colors: ColorConfig) {
     let _ = COLORS.set(colors);
 }
 
-// Get the current color config
-fn colors() -> &'static ColorConfig {
-    COLORS.get_or_init(ColorConfig::default)
+// Set preview colors (for TUI config preview)
+pub fn set_preview_colors(colors: Option<ColorConfig>) {
+    if let Ok(mut preview) = PREVIEW_COLORS.write() {
+        *preview = colors;
+    }
+}
+
+// Get the current color config (preview colors override base colors)
+fn colors() -> ColorConfig {
+    if let Ok(preview) = PREVIEW_COLORS.read() {
+        if let Some(ref c) = *preview {
+            return c.clone();
+        }
+    }
+    COLORS.get_or_init(ColorConfig::default).clone()
 }
 
 // Get ASCII art colors as DynColors array for inkline
