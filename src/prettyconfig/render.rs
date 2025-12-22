@@ -35,7 +35,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 /// Draw the settings panel with art, image, and toggle sections
 fn draw_settings_panel(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     border_color: Color,
     title_color: Color,
@@ -85,13 +85,15 @@ fn draw_settings_panel(
 /// Draw the art configuration box
 fn draw_art_box(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     border_color: Color,
     title_color: Color,
     key_color: Color,
     value_color: Color,
 ) {
+    // Store region for mouse hit-testing
+    app.layout.art_box = area;
     let focused = app.focus == FocusArea::Art;
     let box_border = if focused { title_color } else { border_color };
 
@@ -158,13 +160,15 @@ fn draw_art_box(
 /// Draw the image configuration box
 fn draw_image_box(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     border_color: Color,
     title_color: Color,
     key_color: Color,
     value_color: Color,
 ) {
+    // Store region for mouse hit-testing
+    app.layout.image_box = area;
     let focused = app.focus == FocusArea::Image;
     let box_border = if focused { title_color } else { border_color };
 
@@ -218,7 +222,7 @@ fn draw_image_box(
 /// Draw the toggle grid with Core, Hardware, and Userspace columns
 fn draw_toggle_grid(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     border_color: Color,
     title_color: Color,
@@ -230,6 +234,11 @@ fn draw_toggle_grid(
         Constraint::Percentage(33),
     ])
     .split(area);
+
+    // Store regions for mouse hit-testing
+    app.layout.core_box = cols[0];
+    app.layout.hardware_box = cols[1];
+    app.layout.userspace_box = cols[2];
 
     draw_toggle_column(frame, app, "Core", FocusArea::Core, &[
         ("OS", app.core.os),
@@ -321,7 +330,7 @@ fn draw_toggle_column(
 /// Draw the Save/Cancel buttons
 fn draw_buttons(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     border_color: Color,
     title_color: Color,
@@ -340,6 +349,10 @@ fn draw_buttons(
         Constraint::Length(12),
     ])
     .split(center_area);
+
+    // Store regions for mouse hit-testing
+    app.layout.save_button = cols[0];
+    app.layout.cancel_button = cols[2];
 
     let save_selected = focused && app.index == 0;
     let save_style = if save_selected {

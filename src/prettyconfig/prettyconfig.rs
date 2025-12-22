@@ -29,10 +29,16 @@ pub fn run() -> io::Result<()> {
     loop {
         terminal.draw(|frame| draw(frame, &mut app))?;
 
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                app.handle_key(key.code);
+        match event::read()? {
+            Event::Key(key) => {
+                if key.kind == KeyEventKind::Press {
+                    app.handle_key(key.code);
+                }
             }
+            Event::Mouse(mouse) => {
+                app.handle_mouse(mouse.kind, mouse.column, mouse.row);
+            }
+            _ => {}
         }
 
         if app.should_exit {

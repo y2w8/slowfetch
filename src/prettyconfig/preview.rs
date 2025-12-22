@@ -95,7 +95,7 @@ fn filter_hardware_section(section: &Section, toggles: &HardwareToggles) -> Sect
             "Memory" => toggles.memory,
             "Storage" => toggles.storage,
             "Battery" => toggles.battery,
-            k if k.starts_with("Screen") || k.starts_with("├") || k.starts_with("╰") => toggles.screen,
+            k if k.starts_with("Display") || k.starts_with("├") || k.starts_with("╰") => toggles.screen,
             _ => true,
         })
         .cloned()

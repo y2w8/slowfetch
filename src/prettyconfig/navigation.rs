@@ -10,6 +10,7 @@ use crate::prettyconfig::helpers::{theme_color_to_ratatui};
 use crate::prettyconfig::preview::detect_theme_from_config;
 use crate::visuals::renderer::Section;
 
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 
@@ -94,6 +95,21 @@ pub struct App {
 
     // Exit flag
     pub should_exit: bool,
+
+    // Layout regions for mouse hit-testing
+    pub layout: LayoutRegions,
+}
+
+// Cached layout regions for mouse click detection
+#[derive(Default, Clone)]
+pub struct LayoutRegions {
+    pub art_box: Rect,
+    pub image_box: Rect,
+    pub core_box: Rect,
+    pub hardware_box: Rect,
+    pub userspace_box: Rect,
+    pub save_button: Rect,
+    pub cancel_button: Rect,
 }
 
 impl App {
@@ -143,6 +159,8 @@ impl App {
 
             status_message: None,
             should_exit: false,
+
+            layout: LayoutRegions::default(),
         };
 
         app.update_preview();

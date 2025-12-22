@@ -20,7 +20,7 @@ libc = "0.2"
 memchr = "2.7"
 ratatui = { version = "0.29", features = ["all-widgets"] }
 ratatui-image = "8.1"
-crossterm = "0.28"
+crossterm = "0.29.0"
 
 [profile.bench]
 debug = true

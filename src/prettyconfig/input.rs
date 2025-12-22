@@ -1,11 +1,17 @@
 // Input handling for prettyconfig TUI
 // Key event processing and user interaction
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseButton, MouseEventKind};
+use ratatui::layout::Rect;
 
 use crate::prettyconfig::helpers::{next_theme, prev_theme};
 use crate::prettyconfig::navigation::{App, FocusArea};
 use crate::prettyconfig::save;
+
+// Check if a point is inside a rectangle
+fn point_in_rect(x: u16, y: u16, rect: Rect) -> bool {
+    x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
+}
 
 impl App {
     pub fn handle_key(&mut self, key: KeyCode) {
@@ -183,6 +189,91 @@ impl App {
             Err(e) => {
                 self.status_message = Some(format!("Error: {}", e));
             }
+        }
+    }
+
+    pub fn handle_mouse(&mut self, kind: MouseEventKind, x: u16, y: u16) {
+        // Ignore mouse events while editing
+        if self.editing {
+            return;
+        }
+
+        match kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.handle_mouse_click(x, y);
+            }
+            MouseEventKind::ScrollUp => {
+                self.move_up();
+            }
+            MouseEventKind::ScrollDown => {
+                self.move_down();
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_mouse_click(&mut self, x: u16, y: u16) {
+        let layout = &self.layout;
+
+        // Check Art box
+        if point_in_rect(x, y, layout.art_box) {
+            self.focus = FocusArea::Art;
+            // Calculate which item was clicked (y offset from box top, minus border)
+            let item_y = y.saturating_sub(layout.art_box.y + 1);
+            self.index = (item_y as usize).min(FocusArea::Art.max_index());
+            self.handle_select();
+            return;
+        }
+
+        // Check Image box
+        if point_in_rect(x, y, layout.image_box) {
+            self.focus = FocusArea::Image;
+            let item_y = y.saturating_sub(layout.image_box.y + 1);
+            self.index = (item_y as usize).min(FocusArea::Image.max_index());
+            self.handle_select();
+            return;
+        }
+
+        // Check Core box
+        if point_in_rect(x, y, layout.core_box) {
+            self.focus = FocusArea::Core;
+            let item_y = y.saturating_sub(layout.core_box.y + 1);
+            self.index = (item_y as usize).min(FocusArea::Core.max_index());
+            self.handle_select();
+            return;
+        }
+
+        // Check Hardware box
+        if point_in_rect(x, y, layout.hardware_box) {
+            self.focus = FocusArea::Hardware;
+            let item_y = y.saturating_sub(layout.hardware_box.y + 1);
+            self.index = (item_y as usize).min(FocusArea::Hardware.max_index());
+            self.handle_select();
+            return;
+        }
+
+        // Check Userspace box
+        if point_in_rect(x, y, layout.userspace_box) {
+            self.focus = FocusArea::Userspace;
+            let item_y = y.saturating_sub(layout.userspace_box.y + 1);
+            self.index = (item_y as usize).min(FocusArea::Userspace.max_index());
+            self.handle_select();
+            return;
+        }
+
+        // Check Save button
+        if point_in_rect(x, y, layout.save_button) {
+            self.focus = FocusArea::Buttons;
+            self.index = 0;
+            self.save_config();
+            return;
+        }
+
+        // Check Cancel button
+        if point_in_rect(x, y, layout.cancel_button) {
+            self.focus = FocusArea::Buttons;
+            self.index = 1;
+            self.should_exit = true;
         }
     }
 }
