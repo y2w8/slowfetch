@@ -398,11 +398,26 @@ fn draw_preview_panel(
 
     frame.render_widget(block, area);
 
-    let inner = Rect {
+    // Disclaimer at the top of the preview panel
+    let disclaimer = "~ Rough preview only - actual output will differ ~";
+    let disclaimer_area = Rect {
         x: area.x + 2,
         y: area.y + 1,
         width: area.width.saturating_sub(4),
-        height: area.height.saturating_sub(2),
+        height: 1,
+    };
+    frame.render_widget(
+        Paragraph::new(disclaimer)
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center),
+        disclaimer_area,
+    );
+
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 2,
+        width: area.width.saturating_sub(4),
+        height: area.height.saturating_sub(3),
     };
 
     // If image mode is enabled and we have an image, render image + sections side by side
@@ -507,7 +522,7 @@ fn draw_help_bar(frame: &mut Frame, app: &App, area: Rect) {
     let help_text = if app.editing {
         "Enter: Confirm | Esc: Cancel | Type to edit"
     } else {
-        "Tab: Switch section | ↑↓: Select | ◀▶/Space: Change | s: Save | q: Quit"
+        "Tab: Switch section | ↑↓: Select | Enter/Space: Change | s: Save | q: Quit"
     };
 
     frame.render_widget(
