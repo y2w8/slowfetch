@@ -12,7 +12,7 @@ panic = "abort"
 
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
-inkline = "1.0"
+inkline = "=1.0.0"
 tintify = "1.0"
 kitty_image = "0.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
