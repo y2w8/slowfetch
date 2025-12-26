@@ -75,7 +75,7 @@ pub fn packages() -> String {
         const NEEDLE: &[u8] = b"\nStatus: install ok installed\n";
         let count = memmem::find_iter(&content, NEEDLE).count();
         if count > 0 {
-            counts.push(format!(" {}", count));
+            counts.push(format!("󰕈 {}", count));
         }
     }
 
@@ -87,7 +87,7 @@ pub fn packages() -> String {
             // Count newlines using SIMD-accelerated memchr
             let count = memchr_iter(b'\n', &output.stdout).count();
             if count > 0 {
-                counts.push(format!(" {}", count));
+                counts.push(format!(" {}", count));
             }
         }
     }
@@ -116,7 +116,7 @@ pub fn packages() -> String {
                     newline_count + 1
                 };
                 if count > 0 {
-                    counts.push(format!(" {}", count));
+                    counts.push(format!("󱄅 {}", count));
                 }
             }
         }
@@ -129,7 +129,25 @@ pub fn packages() -> String {
             .filter(|e| e.file_type().map_or(false, |ft| ft.is_dir()))
             .count();
         if count > 0 {
-            counts.push(format!(" {}", count));
+            counts.push(format!(" {}", count));
+        }
+    }
+
+    // Portage (Gentoo) - count package directories in /var/db/pkg/
+    // Structure is /var/db/pkg/<category>/<package>-<version>/
+    if let Ok(categories) = fs::read_dir("/var/db/pkg") {
+        let count: usize = categories
+            .filter_map(|cat| cat.ok())
+            .filter(|cat| cat.file_type().map_or(false, |ft| ft.is_dir()))
+            .filter_map(|cat| fs::read_dir(cat.path()).ok())
+            .map(|pkgs| {
+                pkgs.filter_map(|p| p.ok())
+                    .filter(|p| p.file_type().map_or(false, |ft| ft.is_dir()))
+                    .count()
+            })
+            .sum();
+        if count > 0 {
+            counts.push(format!(" {}", count));
         }
     }
 
