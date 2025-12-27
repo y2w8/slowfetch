@@ -17,6 +17,7 @@ const ASCII_ART_CACHYOS: &str = include_str!("../assets/cachy.txt");
 const ASCII_ART_FEDORA: &str = include_str!("../assets/fedora.txt");
 const ASCII_ART_UBUNTU: &str = include_str!("../assets/ubuntu.txt");
 const ASCII_ART_NIX: &str = include_str!("../assets/nix.txt");
+const ASCII_ART_GENTOO: &str = include_str!("../assets/gentoo.txt");
 
 // Smol versions of OS-specific ASCII art
 const ASCII_ART_ARCH_SMOL: &str = include_str!("../assets/archsmol.txt");
@@ -24,6 +25,7 @@ const ASCII_ART_CACHYOS_SMOL: &str = include_str!("../assets/cachysmol.txt");
 const ASCII_ART_FEDORA_SMOL: &str = include_str!("../assets/fedorasmol.txt");
 const ASCII_ART_UBUNTU_SMOL: &str = include_str!("../assets/ubuntusmol.txt");
 const ASCII_ART_NIX_SMOL: &str = include_str!("../assets/nixsmol.txt");
+const ASCII_ART_GENTOO_SMOL: &str = include_str!("../assets/gentoosmol.txt");
 
 // Render the wide ASCII art logo and return lines as a Vec
 pub fn get_wide_logo_lines() -> Vec<String> {
@@ -52,6 +54,8 @@ pub fn get_os_logo_lines(os_name: &str) -> Option<Vec<String>> {
         Some(ASCII_ART_UBUNTU)
     } else if os_lower.contains("nixos") || os_lower.contains("nix") {
         Some(ASCII_ART_NIX)
+    } else if os_lower.contains("gentoo") {
+        Some(ASCII_ART_GENTOO)
     } else {
         None
     };
@@ -76,6 +80,8 @@ pub fn get_os_logo_lines_smol(os_name: &str) -> Option<Vec<String>> {
         Some(ASCII_ART_UBUNTU_SMOL)
     } else if os_lower.contains("nixos") || os_lower.contains("nix") {
         Some(ASCII_ART_NIX_SMOL)
+    } else if os_lower.contains("gentoo") {
+        Some(ASCII_ART_GENTOO_SMOL)
     } else {
         None
     };
