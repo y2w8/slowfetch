@@ -99,6 +99,16 @@ pub fn read_first_line(path: &str) -> Option<String> {
     Some(line)
 }
 
+// Check if the device is a laptop based on chassis type
+// 8: Portable, 9: Laptop, 10: Notebook, 11: Hand Held, 12: Docking Station,
+// 14: Sub Notebook, 30: Tablet, 31: Convertible, 32: Detachable
+pub fn is_laptop() -> bool {
+    read_first_line("/sys/class/dmi/id/chassis_type")
+        .and_then(|t| t.trim().parse::<u32>().ok())
+        .map(|t| matches!(t, 8 | 9 | 10 | 11 | 12 | 14 | 30 | 31 | 32))
+        .unwrap_or(false)
+}
+
 // Helper to capitalize the first letter of a string.
 // No im not importing a crate for this.
 pub fn capitalize(s: &str) -> String {

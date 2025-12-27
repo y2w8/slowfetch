@@ -7,7 +7,7 @@ use std::process::Command;
 use memchr::{memchr_iter, memmem};
 
 use crate::cache;
-use crate::helpers::{create_bar, get_pci_database, read_first_line};
+use crate::helpers::{create_bar, get_pci_database, is_laptop, read_first_line};
 
 // Get the CPU model name with boost clock.
 // Uses persistent cache to avoid repeated /proc reads.
@@ -150,27 +150,90 @@ pub fn gpu() -> String {
 
 // Fetch GPU info fresh (no cache)
 fn gpu_fresh() -> String {
-    // Try vulkaninfo first - fastest option (~19ms)
-    if let Some(name) = gpu_from_vulkaninfo() {
+    let laptop = is_laptop();
+
+    // On laptops, first try to get iGPU name from CPU string
+    // This gives proper names like "AMD Radeon 780M" instead of codenames like "HawkPoint1" >.>
+    if laptop {
+        if let Some(name) = igpu_from_cpuinfo() {
+            return name;
+        }
+    }
+
+    // Try vulkaninfo - fastest option when available
+    // On desktops, filter out integrated; on laptops, allow all
+    if let Some(name) = gpu_from_vulkaninfo(laptop) {
         return name;
     }
 
-    // Try glxinfo as fallback (~52ms)
+    // Try glxinfo as fallback
     if let Some(name) = gpu_from_glxinfo() {
         return name;
     }
 
-    // Fallback to sysfs + pci.ids lookup (~1ms but less accurate names)
+    // Fallback to sysfs + pci.ids lookup
     if let Some(name) = gpu_from_sysfs() {
         return name;
     }
 
-    // Final fallback: lspci -mm (slow af but should get it done)
-    gpu_from_lspci().unwrap_or_else(|| "unknown".to_string())
+    // Final fallback: lspci
+    if let Some(name) = gpu_from_lspci(laptop) {
+        return name;
+    }
+
+    "unknown".to_string()
 }
 
+
+// Extract integrated GPU name from CPU model string in /proc/cpuinfo
+// e.g. "AMD Ryzen 7 PRO 8840U w/ Radeon 780M Graphics" -> "AMD Radeon 780M"
+fn igpu_from_cpuinfo() -> Option<String> {
+    let content = fs::read("/proc/cpuinfo").ok()?;
+    let needle = b"model name";
+    let pos = memmem::find(&content, needle)?;
+    let after_needle = &content[pos + needle.len()..];
+    let colon_pos = memchr::memchr(b':', after_needle)?;
+    let after_colon = &after_needle[colon_pos + 1..];
+    let line_end = memchr::memchr(b'\n', after_colon).unwrap_or(after_colon.len());
+    let name = std::str::from_utf8(&after_colon[..line_end]).ok()?.trim();
+
+    // Find "with" or "w/" to locate GPU info
+    let lower = name.to_lowercase();
+    let gpu_start = lower.find(" with ").or_else(|| lower.find(" w/ "))?;
+    let gpu_part = &name[gpu_start..];
+
+    // Skip "with " or "w/ "
+    let gpu_name = gpu_part
+        .trim_start_matches(" with ")
+        .trim_start_matches(" With ")
+        .trim_start_matches(" w/ ")
+        .trim_end_matches(" Graphics")
+        .trim();
+
+    if gpu_name.is_empty() {
+        return None;
+    }
+
+    // Add vendor prefix if not present
+    let vendor = if name.contains("AMD") || name.contains("Ryzen") {
+        "AMD"
+    } else if name.contains("Intel") {
+        "Intel"
+    } else {
+        ""
+    };
+
+    if vendor.is_empty() || gpu_name.starts_with(vendor) {
+        Some(gpu_name.to_string())
+    } else {
+        Some(format!("{} {}", vendor, gpu_name))
+    }
+}
+
+
 // Get GPU name from vulkaninfo
-fn gpu_from_vulkaninfo() -> Option<String> {
+// allow_igpu: if true, don't filter out integrated graphics (for laptops without discrete GPU)
+fn gpu_from_vulkaninfo(allow_igpu: bool) -> Option<String> {
     let output = Command::new("vulkaninfo")
         .arg("--summary")
         .output()
@@ -196,11 +259,17 @@ fn gpu_from_vulkaninfo() -> Option<String> {
     // Remove the parenthetical driver info
     let name = name.split('(').next().unwrap_or(name).trim();
 
-    // Skip CPU/APU devices (they also show up in vulkaninfo)
-    if !name.is_empty() && !name.contains("Processor") && !name.contains("llvmpipe") {
-        return Some(name.to_string());
+    // Always skip llvmpipe (software renderer)
+    if name.is_empty() || name.contains("llvmpipe") {
+        return None;
     }
-    None
+
+    // Skip integrated GPU unless allowed (for laptops without discrete GPU)
+    if !allow_igpu && name.contains("Processor") {
+        return None;
+    }
+
+    Some(name.to_string())
 }
 
 // Get GPU name from glxinfo (requires X11/Wayland with GL)
@@ -276,7 +345,7 @@ fn gpu_from_sysfs() -> Option<String> {
         let (vendor_name, devices) = pci_db.get(&vendor_id)?;
         let device_name = devices.get(&device_id)?;
 
-        // Extract the part in brackets if present using byte-level search
+        // Extract the part in bracketsAMD HawkPoint1  if present using byte-level search
         let device_bytes = device_name.as_bytes();
         let display_name = memchr::memchr(b'[', device_bytes)
             .and_then(|start| {
@@ -308,7 +377,8 @@ fn gpu_from_sysfs() -> Option<String> {
 }
 
 // Get GPU name from lspci -mm (final fallback)
-fn gpu_from_lspci() -> Option<String> {
+// allow_igpu: if true, don't filter out integrated graphics (for laptops without discrete GPU)
+fn gpu_from_lspci(allow_igpu: bool) -> Option<String> {
     let output = Command::new("lspci").arg("-mm").output().ok()?;
     let stdout = &output.stdout;
 
@@ -361,8 +431,9 @@ fn gpu_from_lspci() -> Option<String> {
             let vendor = fields[1];
             let device = fields[2];
 
-            // Skip integrated/CPU graphics if possible
-            if !device.contains("Processor") && !device.contains("Integrated") {
+            // Skip integrated/CPU graphics unless allowed (for laptops without discrete GPU)
+            let is_integrated = device.contains("Processor") || device.contains("Integrated");
+            if allow_igpu || !is_integrated {
                 // Shorten common vendor names
                 let vendor_short = match vendor {
                     v if v.contains("Advanced Micro Devices") || v.contains("AMD") => "AMD",
@@ -491,15 +562,7 @@ fn get_fs_stats(path: &str) -> Option<(u64, u64)> {
 
 // Get battery status if device is a laptop (chassis check)
 pub fn laptop_battery() -> String {
-    // Check chassis type to determine if it's a laptop
-    // 8: Portable, 9: Laptop, 10: Notebook, 11: Hand Held, 12: Docking Station,
-    // 14: Sub Notebook, 30: Tablet, 31: Convertible, 32: Detachable
-    let is_laptop = read_first_line("/sys/class/dmi/id/chassis_type")
-        .and_then(|t| t.trim().parse::<u32>().ok())
-        .map(|t| matches!(t, 8 | 9 | 10 | 11 | 12 | 14 | 30 | 31 | 32))
-        .unwrap_or(false);
-
-    if !is_laptop {
+    if !is_laptop() {
         return "unknown".to_string();
     }
 
