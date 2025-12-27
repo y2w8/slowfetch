@@ -622,15 +622,8 @@ pub fn screen() -> Vec<(String, String)> {
         }
     }
 
-    // KDE Plasma via D-Bus
-    if desktop.contains("kde") || desktop.contains("plasma") {
-        if let Some(screens) = screen_from_kde_dbus() {
-            return screens;
-        }
-    }
-
     // GNOME via D-Bus
-    if desktop == "gnome" {
+    if desktop.contains("gnome") {
         if let Some(screens) = screen_from_gnome_dbus() {
             return screens;
         }
@@ -759,14 +752,18 @@ fn screen_from_niri() -> Option<Vec<(String, String)>> {
     Some(format_screens(screens))
 }
 
-// Get screen info from KDE Plasma via D-Bus
-fn screen_from_kde_dbus() -> Option<Vec<(String, String)>> {
-    // kscreen-doctor -o gives output like:
-    // Output: 1 DP-1 enabled connected primary
-    //   Modes:  ...
-    //   Mode: 2560x1440@75 *
-    let output = Command::new("kscreen-doctor")
-        .arg("-o")
+// Get screen info from GNOME via D-Bus
+fn screen_from_gnome_dbus() -> Option<Vec<(String, String)>> {
+    // Query Mutter's DisplayConfig D-Bus interface for monitor information
+    // This works on native GNOME Wayland sessions
+    let output = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest=org.gnome.Mutter.DisplayConfig",
+            "--object-path=/org/gnome/Mutter/DisplayConfig",
+            "--method=org.gnome.Mutter.DisplayConfig.GetCurrentState",
+        ])
         .output()
         .ok()?;
 
@@ -774,100 +771,65 @@ fn screen_from_kde_dbus() -> Option<Vec<(String, String)>> {
         return None;
     }
 
-    let stdout = &output.stdout;
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let mut screens: Vec<(bool, String)> = Vec::new();
-    let mut current_is_primary = false;
 
-    let mut start = 0;
-    for end in memchr_iter(b'\n', stdout) {
-        let line = &stdout[start..end];
-        start = end + 1;
+    // The D-Bus output format for each mode is a tuple:
+    // ('2880x1800@120.000', 2880, 1800, 119.999, 2.0, [...], {'is-current': <true>, ...})
+    // We look for modes that have 'is-current': <true> in their properties dict
 
-        // Output line with "primary" marker
-        if line.starts_with(b"Output:") {
-            current_is_primary = memmem::find(line, b"primary").is_some();
-        }
-        // Active mode line ends with *
-        else if line.ends_with(b"*") && memmem::find(line, b"Mode:").is_some() {
-            let line_str = std::str::from_utf8(line).ok()?;
-            // Extract "2560x1440@75" from "  Mode: 2560x1440@75 *"
-            if let Some(mode_start) = line_str.find("Mode:") {
-                let mode_part = line_str[mode_start + 5..].trim().trim_end_matches(" *");
-                // Split on @ to get resolution and rate
-                let parts: Vec<&str> = mode_part.split('@').collect();
-                if parts.len() == 2 {
-                    let res = parts[0];
-                    let rate = parts[1];
+    // Find all occurrences of 'is-current': <true> and extract the mode info before it
+    let mut search_start = 0;
+    while let Some(current_pos) = stdout[search_start..].find("'is-current': <true>") {
+        let abs_pos = search_start + current_pos;
 
-                    // KDE doesn't easily expose rotation in kscreen-doctor output, assume landscape
-                    let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
-                        format!("󰏠 {} @ {}Hz", res, rate_f.round() as u64)
-                    } else {
-                        format!("󰏠 {} @ {}Hz", res, rate)
-                    };
-                    screens.push((current_is_primary, display_str));
+        // Look backwards to find the mode tuple - find the mode string pattern
+        // The mode string looks like ('2880x1800@120.000', ...)
+        let region_start = abs_pos.saturating_sub(300);
+        let region = &stdout[region_start..abs_pos];
+
+        // Find the last mode pattern like '2880x1800@120.000' before this is-current
+        // Mode format: 'WIDTHxHEIGHT@RATE'
+        if let Some(mode_match) = region.rfind("('") {
+            let mode_start = region_start + mode_match + 2;
+            if let Some(mode_end) = stdout[mode_start..].find("',") {
+                let mode_str = &stdout[mode_start..mode_start + mode_end];
+                // Parse 'WIDTHxHEIGHT@RATE' format
+                if let Some(at_pos) = mode_str.find('@') {
+                    let res = &mode_str[..at_pos];
+                    let rate = &mode_str[at_pos + 1..];
+
+                    // Check for primary in the logical monitors section
+                    // The logical monitor tuple format: (x, y, scale, transform, primary, monitors, props)
+                    // where primary is a boolean (true/false)
+                    // The 5th element (index 4) is the primary boolean
+                    let after_region = &stdout[abs_pos..(abs_pos + 500).min(stdout.len())];
+                    let before_region = &stdout[region_start..abs_pos];
+
+                    // For primary: look for ", true, [(" pattern which indicates primary=true before monitors list
+                    let is_primary =
+                        before_region.contains(", true, [('") || after_region.contains(", true, [('");
+
+                    // Transform values: 0=normal, 1=90°, 2=180°, 3=270°
+                    // Portrait if transform is 1 or 3
+                    // The logical monitors section has format: (x, y, scale, uint32 TRANSFORM, primary, ...)
+                    // We need to check for " uint32 1," or " uint32 3," with a space before to avoid matching 0, 10, etc.
+                    let is_portrait = before_region.contains(" uint32 1,")
+                        || before_region.contains(" uint32 3,")
+                        || after_region.contains(" uint32 1,")
+                        || after_region.contains(" uint32 3,");
+
+                    if let Ok(rate_f) = rate.parse::<f64>() {
+                        let icon = if is_portrait { "󰆡" } else { "󰏠" };
+                        let display_str =
+                            format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64);
+                        screens.push((is_primary, display_str));
+                    }
                 }
             }
         }
-    }
 
-    if screens.is_empty() {
-        return None;
-    }
-
-    Some(format_screens(screens))
-}
-
-// Get screen info from GNOME via D-Bus
-fn screen_from_gnome_dbus() -> Option<Vec<(String, String)>> {
-    // gnome-randr query gives output like:
-    // DP-1 connected 2560x1440+0+0 primary
-    //   2560x1440@74.97*
-    let output = Command::new("gnome-randr")
-        .arg("query")
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = &output.stdout;
-    let mut screens: Vec<(bool, String)> = Vec::new();
-    let mut current_is_primary = false;
-    let mut current_is_portrait = false;
-
-    let mut start = 0;
-    for end in memchr_iter(b'\n', stdout) {
-        let line = &stdout[start..end];
-        start = end + 1;
-
-        // Output connection line
-        if memmem::find(line, b" connected ").is_some() {
-            current_is_primary = memmem::find(line, b"primary").is_some();
-            // Check for rotation keywords
-            current_is_portrait = memmem::find(line, b"left").is_some()
-                || memmem::find(line, b"right").is_some();
-        }
-        // Active mode line contains *
-        else if memchr::memchr(b'*', line).is_some() {
-            let line_str = std::str::from_utf8(line).ok()?.trim();
-            // Format: "2560x1440@74.97*"
-            let mode = line_str.trim_end_matches('*').trim_end_matches('+');
-            let parts: Vec<&str> = mode.split('@').collect();
-            if parts.len() == 2 {
-                let res = parts[0];
-                let rate = parts[1];
-
-                let icon = if current_is_portrait { "󰆡" } else { "󰏠" };
-                let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
-                    format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64)
-                } else {
-                    format!("{} {} @ {}Hz", icon, res, rate)
-                };
-                screens.push((current_is_primary, display_str));
-            }
-        }
+        search_start = abs_pos + 20;
     }
 
     if screens.is_empty() {
