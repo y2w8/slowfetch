@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use memchr::{memchr_iter, memmem};
 
@@ -13,11 +14,27 @@ use crate::modules::fontmodule::{find_font, is_nerd_font};
 static CACHED_FONT: OnceLock<String> = OnceLock::new();
 static CACHED_IS_NERD: OnceLock<bool> = OnceLock::new();
 
+// Global nerd font override: 0 = auto, 1 = force on, 2 = force off
+static NERD_FONT_OVERRIDE: AtomicU8 = AtomicU8::new(0);
+
+/// Set the nerd font override from config
+/// 0 = auto (detect from font), 1 = force on, 2 = force off
+pub fn set_nerd_font_override(mode: u8) {
+    NERD_FONT_OVERRIDE.store(mode, Ordering::Relaxed);
+}
+
 fn get_cached_is_nerd_font() -> bool {
-    *CACHED_IS_NERD.get_or_init(|| {
-        let font = CACHED_FONT.get_or_init(find_font);
-        is_nerd_font(font)
-    })
+    match NERD_FONT_OVERRIDE.load(Ordering::Relaxed) {
+        1 => true,  // Force on
+        2 => false, // Force off
+        _ => {
+            // Auto-detect from font
+            *CACHED_IS_NERD.get_or_init(|| {
+                let font = CACHED_FONT.get_or_init(find_font);
+                is_nerd_font(font)
+            })
+        }
+    }
 }
 
 // Parsed PCI database: vendor_id -> (vendor_name, device_id -> device_name)
@@ -145,7 +162,7 @@ pub fn create_bar_ascii(usage_percent: f64) -> String {
     let filled_blocks = ((usage_percent / 10.0).round() as usize).min(10);
     let empty_blocks = 10 - filled_blocks;
 
-    format!("[{}{}]", "=".repeat(filled_blocks), " ".repeat(empty_blocks))
+    format!("{}{}", "🬋".repeat(filled_blocks), "═".repeat(empty_blocks))
 }
 
 // Draw the bar, auto-selecting style based on font (cached)

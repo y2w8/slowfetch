@@ -309,6 +309,14 @@ impl ColorConfig {
     }
 }
 
+// Nerd font setting - can be auto-detect, forced on, or forced off
+#[derive(Debug, Clone, Copy)]
+pub enum NerdFontSetting {
+    Auto,
+    ForceOn,
+    ForceOff,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub os_art: OsArtSetting,
@@ -316,6 +324,7 @@ pub struct Config {
     pub custom_art: Option<String>,
     pub image: bool,
     pub image_path: Option<String>,
+    pub nerd_fonts: NerdFontSetting,
     pub core: CoreToggles,
     pub hardware: HardwareToggles,
     pub userspace: UserspaceToggles,
@@ -329,6 +338,7 @@ impl Default for Config {
             custom_art: None,
             image: false,
             image_path: None,
+            nerd_fonts: NerdFontSetting::Auto,
             core: CoreToggles::default(),
             hardware: HardwareToggles::default(),
             userspace: UserspaceToggles::default(),
@@ -623,6 +633,15 @@ fn parse_config(content: &str) -> Config {
                         config.image_path = Some(expanded);
                     }
                 }
+            }
+        }
+
+        // Parse nerd_fonts setting
+        if key == b"nerd_fonts" {
+            if value == b"true" {
+                config.nerd_fonts = NerdFontSetting::ForceOn;
+            } else if value == b"false" {
+                config.nerd_fonts = NerdFontSetting::ForceOff;
             }
         }
 

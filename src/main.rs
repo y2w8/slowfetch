@@ -53,6 +53,13 @@ fn main() {
     let config = configloader::load_config();
     visuals::colorcontrol::init_colors(config.colors.clone());
 
+    // Set nerd font override from config
+    helpers::set_nerd_font_override(match config.nerd_fonts {
+        configloader::NerdFontSetting::Auto => 0,
+        configloader::NerdFontSetting::ForceOn => 1,
+        configloader::NerdFontSetting::ForceOff => 2,
+    });
+
     // Load all sections based on config
     let (core, hardware, userspace) = dostuff::load_sections(&config);
 
