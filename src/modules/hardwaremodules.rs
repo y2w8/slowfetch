@@ -538,88 +538,300 @@ pub fn laptop_battery() -> String {
     "unknown".to_string()
 }
 
-// Get screen resolution and refresh rate using xrandr
+// Get screen resolution and refresh rate
 // Returns a Vec of (key, value) pairs for each monitor, primary first
+// Tries xrandr first, then Wayland-specific methods (niri, KDE, GNOME)
 pub fn screen() -> Vec<(String, String)> {
+    // Try xrandr first (works on X11 and XWayland)
+    if let Some(screens) = screen_from_xrandr() {
+        return screens;
+    }
+
+    // Wayland fallbacks based on compositor/DE
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .to_lowercase();
+
+    // Niri compositor
+    if desktop == "niri" || std::env::var("NIRI_SOCKET").is_ok() {
+        if let Some(screens) = screen_from_niri() {
+            return screens;
+        }
+    }
+
+    // KDE Plasma via D-Bus
+    if desktop.contains("kde") || desktop.contains("plasma") {
+        if let Some(screens) = screen_from_kde_dbus() {
+            return screens;
+        }
+    }
+
+    // GNOME via D-Bus
+    if desktop == "gnome" {
+        if let Some(screens) = screen_from_gnome_dbus() {
+            return screens;
+        }
+    }
+
+    vec![]
+}
+
+// Parse xrandr --current output
+fn screen_from_xrandr() -> Option<Vec<(String, String)>> {
     let output = Command::new("xrandr")
         .arg("--current")
         .output()
-        .ok();
+        .ok()?;
 
-    if let Some(out) = output {
-        let stdout = &out.stdout;
-        // Store (is_primary, display_string)
-        let mut screens: Vec<(bool, String)> = Vec::new();
-        let mut current_is_primary = false;
-        let mut current_is_portrait = false;
+    if !output.status.success() {
+        return None;
+    }
 
-        // Process line by line using memchr
-        let mut start = 0;
-        for end in memchr_iter(b'\n', stdout) {
-            let line = &stdout[start..end];
-            start = end + 1;
+    let stdout = &output.stdout;
+    let mut screens: Vec<(bool, String)> = Vec::new();
+    let mut current_is_primary = false;
+    let mut current_is_portrait = false;
 
-            // Check for output connection line using SIMD search
-            if memmem::find(line, b" connected").is_some() {
-                current_is_primary = memmem::find(line, b" primary ").is_some();
-                // Portrait mode: check for " left" or " right" before '('
-                let before_paren = memchr::memchr(b'(', line)
-                    .map(|p| &line[..p])
-                    .unwrap_or(line);
-                current_is_portrait = memmem::find(before_paren, b" left").is_some()
-                    || memmem::find(before_paren, b" right").is_some();
-            }
-            // Look for lines indicating the active mode (contains *)
-            else if memchr::memchr(b'*', line).is_some() {
-                let line_str = match std::str::from_utf8(line) {
-                    Ok(s) => s,
-                    Err(_) => continue,
+    let mut start = 0;
+    for end in memchr_iter(b'\n', stdout) {
+        let line = &stdout[start..end];
+        start = end + 1;
+
+        if memmem::find(line, b" connected").is_some() {
+            current_is_primary = memmem::find(line, b" primary ").is_some();
+            let before_paren = memchr::memchr(b'(', line)
+                .map(|p| &line[..p])
+                .unwrap_or(line);
+            current_is_portrait = memmem::find(before_paren, b" left").is_some()
+                || memmem::find(before_paren, b" right").is_some();
+        } else if memchr::memchr(b'*', line).is_some() {
+            let line_str = std::str::from_utf8(line).ok()?;
+            let parts: Vec<&str> = line_str.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let res = parts[0];
+                let rate: String = parts[1]
+                    .chars()
+                    .filter(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+
+                let icon = if current_is_portrait { "󰆡" } else { "󰏠" };
+                let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
+                    format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64)
+                } else {
+                    format!("{} {} @ {}Hz", icon, res, rate)
                 };
-                let parts: Vec<&str> = line_str.split_whitespace().collect();
-                if parts.len() >= 2 {
+                screens.push((current_is_primary, display_str));
+            }
+        }
+    }
+
+    if screens.is_empty() {
+        return None;
+    }
+
+    Some(format_screens(screens))
+}
+
+// Parse niri msg outputs
+fn screen_from_niri() -> Option<Vec<(String, String)>> {
+    let output = Command::new("niri")
+        .args(["msg", "outputs"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = &output.stdout;
+    let mut screens: Vec<(bool, String)> = Vec::new();
+    let mut current_is_portrait = false;
+    let mut is_first = true;
+
+    let mut start = 0;
+    for end in memchr_iter(b'\n', stdout) {
+        let line = &stdout[start..end];
+        start = end + 1;
+
+        // Output line starts with "Output " (no leading whitespace)
+        if line.starts_with(b"Output ") {
+            // First output is treated as primary
+            is_first = screens.is_empty();
+            current_is_portrait = false;
+        }
+        // Transform line: "  Transform: 90° counter-clockwise" or "  Transform: normal"
+        else if memmem::find(line, b"Transform:").is_some() {
+            // Portrait if rotated 90° or 270°
+            current_is_portrait = memmem::find(line, b"90").is_some()
+                || memmem::find(line, b"270").is_some();
+        }
+        // Current mode line: "  Current mode: 2560x1440 @ 74.968 Hz"
+        else if memmem::find(line, b"Current mode:").is_some() {
+            let line_str = std::str::from_utf8(line).ok()?;
+            // Extract resolution and refresh rate
+            if let Some(mode_start) = line_str.find("Current mode:") {
+                let mode_part = &line_str[mode_start + 13..].trim();
+                let parts: Vec<&str> = mode_part.split_whitespace().collect();
+                // Expected: ["2560x1440", "@", "74.968", "Hz"]
+                if parts.len() >= 3 {
                     let res = parts[0];
-                    // Rate often looks like "60.00*+" or "144.00*" or "59.95*"
-                    // Filter out non-numeric chars except dot
-                    let rate_str = parts[1];
-                    let rate: String = rate_str
-                        .chars()
-                        .filter(|c| c.is_ascii_digit() || *c == '.')
-                        .collect();
+                    let rate = parts[2];
 
-                    // Orientation icon: 󰆠 for landscape, 󰆡 for portrait
                     let icon = if current_is_portrait { "󰆡" } else { "󰏠" };
-
-                    // Parse as float for rounding
                     let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
                         format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64)
                     } else {
                         format!("{} {} @ {}Hz", icon, res, rate)
                     };
+                    screens.push((is_first, display_str));
+                }
+            }
+        }
+    }
+
+    if screens.is_empty() {
+        return None;
+    }
+
+    Some(format_screens(screens))
+}
+
+// Get screen info from KDE Plasma via D-Bus
+fn screen_from_kde_dbus() -> Option<Vec<(String, String)>> {
+    // kscreen-doctor -o gives output like:
+    // Output: 1 DP-1 enabled connected primary
+    //   Modes:  ...
+    //   Mode: 2560x1440@75 *
+    let output = Command::new("kscreen-doctor")
+        .arg("-o")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = &output.stdout;
+    let mut screens: Vec<(bool, String)> = Vec::new();
+    let mut current_is_primary = false;
+
+    let mut start = 0;
+    for end in memchr_iter(b'\n', stdout) {
+        let line = &stdout[start..end];
+        start = end + 1;
+
+        // Output line with "primary" marker
+        if line.starts_with(b"Output:") {
+            current_is_primary = memmem::find(line, b"primary").is_some();
+        }
+        // Active mode line ends with *
+        else if line.ends_with(b"*") && memmem::find(line, b"Mode:").is_some() {
+            let line_str = std::str::from_utf8(line).ok()?;
+            // Extract "2560x1440@75" from "  Mode: 2560x1440@75 *"
+            if let Some(mode_start) = line_str.find("Mode:") {
+                let mode_part = line_str[mode_start + 5..].trim().trim_end_matches(" *");
+                // Split on @ to get resolution and rate
+                let parts: Vec<&str> = mode_part.split('@').collect();
+                if parts.len() == 2 {
+                    let res = parts[0];
+                    let rate = parts[1];
+
+                    // KDE doesn't easily expose rotation in kscreen-doctor output, assume landscape
+                    let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
+                        format!("󰏠 {} @ {}Hz", res, rate_f.round() as u64)
+                    } else {
+                        format!("󰏠 {} @ {}Hz", res, rate)
+                    };
                     screens.push((current_is_primary, display_str));
                 }
             }
         }
+    }
 
-        // Sort so primary monitor comes first
-        screens.sort_by(|a, b| b.0.cmp(&a.0));
+    if screens.is_empty() {
+        return None;
+    }
 
-        if !screens.is_empty() {
-            if screens.len() == 1 {
-                return vec![("Display".to_string(), screens[0].1.clone())];
-            }
-            // Multiple monitors: header line + tree-style entries
-            let mut result = vec![("Displays".to_string(), String::new())];
-            let last_idx = screens.len() - 1;
-            for (i, (_, s)) in screens.iter().enumerate() {
-                if i == last_idx {
-                    result.push(("╰─".to_string(), s.clone()));
+    Some(format_screens(screens))
+}
+
+// Get screen info from GNOME via D-Bus
+fn screen_from_gnome_dbus() -> Option<Vec<(String, String)>> {
+    // gnome-randr query gives output like:
+    // DP-1 connected 2560x1440+0+0 primary
+    //   2560x1440@74.97*
+    let output = Command::new("gnome-randr")
+        .arg("query")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = &output.stdout;
+    let mut screens: Vec<(bool, String)> = Vec::new();
+    let mut current_is_primary = false;
+    let mut current_is_portrait = false;
+
+    let mut start = 0;
+    for end in memchr_iter(b'\n', stdout) {
+        let line = &stdout[start..end];
+        start = end + 1;
+
+        // Output connection line
+        if memmem::find(line, b" connected ").is_some() {
+            current_is_primary = memmem::find(line, b"primary").is_some();
+            // Check for rotation keywords
+            current_is_portrait = memmem::find(line, b"left").is_some()
+                || memmem::find(line, b"right").is_some();
+        }
+        // Active mode line contains *
+        else if memchr::memchr(b'*', line).is_some() {
+            let line_str = std::str::from_utf8(line).ok()?.trim();
+            // Format: "2560x1440@74.97*"
+            let mode = line_str.trim_end_matches('*').trim_end_matches('+');
+            let parts: Vec<&str> = mode.split('@').collect();
+            if parts.len() == 2 {
+                let res = parts[0];
+                let rate = parts[1];
+
+                let icon = if current_is_portrait { "󰆡" } else { "󰏠" };
+                let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
+                    format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64)
                 } else {
-                    result.push(("├─".to_string(), s.clone()));
-                }
+                    format!("{} {} @ {}Hz", icon, res, rate)
+                };
+                screens.push((current_is_primary, display_str));
             }
-            return result;
         }
     }
 
-    vec![]
+    if screens.is_empty() {
+        return None;
+    }
+
+    Some(format_screens(screens))
+}
+
+// Format screens list into the output format (primary first, tree-style for multiple)
+fn format_screens(mut screens: Vec<(bool, String)>) -> Vec<(String, String)> {
+    // Sort so primary monitor comes first
+    screens.sort_by(|a, b| b.0.cmp(&a.0));
+
+    if screens.len() == 1 {
+        return vec![("Display".to_string(), screens[0].1.clone())];
+    }
+
+    // Multiple monitors: header line + tree-style entries
+    let mut result = vec![("Displays".to_string(), String::new())];
+    let last_idx = screens.len() - 1;
+    for (i, (_, s)) in screens.iter().enumerate() {
+        if i == last_idx {
+            result.push(("╰─".to_string(), s.clone()));
+        } else {
+            result.push(("├─".to_string(), s.clone()));
+        }
+    }
+    result
 }
