@@ -444,6 +444,9 @@ pub fn load_config() -> Config {
         }
     };
 
+    // Migrate config to add any new fields from default config
+    migrate_config_if_needed();
+
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return Config::default(),
@@ -706,4 +709,121 @@ fn expand_home_path(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+// Migrate user config file by adding any new fields from the default config.
+// Strategy: Extract user's active settings, write fresh default config, reapply user settings.
+pub fn migrate_config_if_needed() {
+    let user_path = match get_config_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let user_content = match fs::read_to_string(&user_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    // Extract user's uncommented (active) settings
+    let user_settings = extract_active_settings(&user_content);
+
+    // If user has no active settings, nothing to preserve
+    if user_settings.is_empty() {
+        // Just check if default has more content
+        if user_content.trim() != DEFAULT_CONFIG.trim() {
+            let _ = fs::write(&user_path, DEFAULT_CONFIG);
+        }
+        return;
+    }
+
+    // Apply user settings to fresh default config
+    let new_content = apply_settings_to_default(&user_settings);
+
+    // Only write if something changed
+    if new_content != user_content {
+        if let Err(e) = fs::write(&user_path, &new_content) {
+            eprintln!("Warning: Could not update config file: {}", e);
+        }
+    }
+}
+
+// Extract active (uncommented) key=value settings from user config.
+// Returns Vec of (section, key, full_line) tuples.
+fn extract_active_settings(content: &str) -> Vec<(String, String, String)> {
+    let mut settings = Vec::new();
+    let mut current_section = String::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Track section headers
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            current_section = trimmed[1..trimmed.len() - 1].to_string();
+            continue;
+        }
+
+        // Skip empty lines and comments
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        // Parse key = value
+        if let Some(eq_pos) = trimmed.find('=') {
+            let key = trimmed[..eq_pos].trim();
+            if !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                settings.push((current_section.clone(), key.to_string(), line.to_string()));
+            }
+        }
+    }
+
+    settings
+}
+
+// Apply user settings to the default config template.
+// For each user setting, find and uncomment/replace the first matching line in default.
+fn apply_settings_to_default(user_settings: &[(String, String, String)]) -> String {
+    use std::collections::HashSet;
+
+    let mut lines: Vec<String> = DEFAULT_CONFIG.lines().map(|s| s.to_string()).collect();
+    let mut current_section = String::new();
+    // Track which (section, key) pairs have already been applied
+    let mut applied: HashSet<(String, String)> = HashSet::new();
+
+    for line in lines.iter_mut() {
+        let trimmed = line.trim();
+
+        // Track section headers
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            current_section = trimmed[1..trimmed.len() - 1].to_string();
+            continue;
+        }
+
+        // Check if this line (commented or not) matches a user setting
+        let check_line = if trimmed.starts_with('#') {
+            trimmed.trim_start_matches('#').trim_start()
+        } else {
+            trimmed
+        };
+
+        if let Some(eq_pos) = check_line.find('=') {
+            let key = check_line[..eq_pos].trim();
+            if !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                let lookup = (current_section.clone(), key.to_string());
+                // Skip if we already applied a setting for this section+key
+                if applied.contains(&lookup) {
+                    continue;
+                }
+                // Look for matching user setting
+                for (section, user_key, user_line) in user_settings {
+                    if section == &current_section && user_key == key {
+                        *line = user_line.clone();
+                        applied.insert(lookup);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    lines.join("\n") + "\n"
 }
