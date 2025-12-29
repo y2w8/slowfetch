@@ -269,16 +269,7 @@ pub fn terminal() -> String {
 
 // Get the active UI/Shell, i dont know what to call this shit because i already used shell for the terminal shell
 pub fn ui() -> String {
-    // Fast path: check env vars for common desktop shells
-    if let Ok(desktop) = env::var("XDG_CURRENT_DESKTOP") {
-        match desktop.to_lowercase().as_str() {
-            "kde" | "plasma" => return "Plasma Shell".to_string(),
-            "gnome" => return "Gnome Shell".to_string(),
-            _ => {}
-        }
-    }
-
-    // Scan /proc for custom shells (noctalia, dms, waybar) - i really dont want to do this but i cant think of another way rn
+    // Scan /proc for custom shells first (noctalia, dms) - these take priority over env vars
     let proc_path = Path::new("/proc");
     if let Ok(entries) = fs::read_dir(proc_path) {
         for entry in entries.flatten() {
@@ -321,6 +312,15 @@ pub fn ui() -> String {
                     return "Custom Waybar setup".to_string();
                 }
             }
+        }
+    }
+
+    // Fallback: check env vars for common desktop shells
+    if let Ok(desktop) = env::var("XDG_CURRENT_DESKTOP") {
+        match desktop.to_lowercase().as_str() {
+            "kde" | "plasma" => return "Plasma Shell".to_string(),
+            "gnome" => return "Gnome Shell".to_string(),
+            _ => {}
         }
     }
 
