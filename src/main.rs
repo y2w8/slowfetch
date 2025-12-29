@@ -30,6 +30,10 @@ struct Args {
     // Launch TUI configuration editor
     #[arg(short = 'c', long = "config")]
     config: bool,
+
+    // Update config file to latest version (preserves user settings)
+    #[arg(short = 'u', long = "update")]
+    update: bool,
 }
 
 fn main() {
@@ -41,6 +45,12 @@ fn main() {
             eprintln!("Error running config editor: {}", e);
             std::process::exit(1);
         }
+        return;
+    }
+
+    // Update config file if --update/-u was passed
+    if args.update {
+        configloader::migrate_config();
         return;
     }
 

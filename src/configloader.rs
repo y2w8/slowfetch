@@ -8,6 +8,7 @@ use memchr::{memchr, memchr_iter};
 // Embed the default config file at compile time
 const DEFAULT_CONFIG: &str = include_str!("config.toml");
 
+
 // OS art setting - can be disabled, auto-detect, or specific OS
 #[derive(Debug, Clone)]
 pub enum OsArtSetting {
@@ -444,9 +445,6 @@ pub fn load_config() -> Config {
         }
     };
 
-    // Migrate config to add any new fields from default config
-    migrate_config_if_needed();
-
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return Config::default(),
@@ -713,25 +711,37 @@ fn expand_home_path(path: &str) -> String {
 
 // Migrate user config file by adding any new fields from the default config.
 // Strategy: Extract user's active settings, write fresh default config, reapply user settings.
-pub fn migrate_config_if_needed() {
+// Called manually via -u/--update flag.
+pub fn migrate_config() {
     let user_path = match get_config_path() {
         Some(p) => p,
-        None => return,
+        None => {
+            eprintln!("No config file found. Run slowfetch once to create one.");
+            return;
+        }
     };
 
     let user_content = match fs::read_to_string(&user_path) {
         Ok(c) => c,
-        Err(_) => return,
+        Err(e) => {
+            eprintln!("Could not read config file: {}", e);
+            return;
+        }
     };
 
     // Extract user's uncommented (active) settings
     let user_settings = extract_active_settings(&user_content);
 
-    // If user has no active settings, nothing to preserve
+    // If user has no active settings, just replace with default
     if user_settings.is_empty() {
-        // Just check if default has more content
         if user_content.trim() != DEFAULT_CONFIG.trim() {
-            let _ = fs::write(&user_path, DEFAULT_CONFIG);
+            if let Err(e) = fs::write(&user_path, DEFAULT_CONFIG) {
+                eprintln!("Could not update config file: {}", e);
+            } else {
+                eprintln!("Config updated to latest version: {:?}", user_path);
+            }
+        } else {
+            eprintln!("Config is already up to date.");
         }
         return;
     }
@@ -739,11 +749,14 @@ pub fn migrate_config_if_needed() {
     // Apply user settings to fresh default config
     let new_content = apply_settings_to_default(&user_settings);
 
-    // Only write if something changed
     if new_content != user_content {
         if let Err(e) = fs::write(&user_path, &new_content) {
-            eprintln!("Warning: Could not update config file: {}", e);
+            eprintln!("Could not update config file: {}", e);
+        } else {
+            eprintln!("Config updated to latest version: {:?}", user_path);
         }
+    } else {
+        eprintln!("Config is already up to date.");
     }
 }
 
