@@ -375,7 +375,7 @@ pub fn load_config() -> Config {
     parse_config(&content)
 }
 
-// Track which section we're currently parsing
+// Track which section currently being parsed
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ConfigSection {
     None,
@@ -734,7 +734,7 @@ fn apply_settings_to_default(user_settings: &[(String, String, String)]) -> Stri
             let key = check_line[..eq_pos].trim();
             if !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 let lookup = (current_section.clone(), key.to_string());
-                // Skip if we already applied a setting for this section+key
+                // Skip if already applied a setting for this section+key
                 if applied.contains(&lookup) {
                     continue;
                 }
