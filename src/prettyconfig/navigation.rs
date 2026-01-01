@@ -52,7 +52,7 @@ impl FocusArea {
         match self {
             Self::Art => 2,       // Theme, OS Art, Custom Art
             Self::Image => 1,     // Enabled, Path
-            Self::Core => 2,      // OS, Kernel, Uptime
+            Self::Core => 3,      // OS, Kernel, Uptime, Init
             Self::Hardware => 5,  // CPU, GPU, Memory, Storage, Battery, Screen
             Self::Userspace => 6, // Packages, Terminal, Shell, WM, UI, Editor, Term Font
             Self::Buttons => 1,   // Save, Cancel
@@ -118,7 +118,7 @@ impl App {
 
         // Load sections with ALL toggles enabled for preview
         let mut full_config = config.clone();
-        full_config.core = CoreToggles { os: true, kernel: true, uptime: true };
+        full_config.core = CoreToggles { os: true, kernel: true, uptime: true, init: true };
         full_config.hardware = HardwareToggles {
             cpu: true, gpu: true, memory: true, storage: true, battery: true, screen: true,
         };

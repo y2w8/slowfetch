@@ -18,14 +18,14 @@ pub enum OsArtSetting {
 }
 
 // Theme color - can be RGB or ANSI (0-15)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ThemeColor {
     Rgb(u8, u8, u8),
     Ansi(u8), // ANSI color code 0-15
 }
 
 // Color configuration - theme colors can be RGB or ANSI
-// Art colors are always RGB tuples
+// Art colors default to ANSI (terminal scheme) but can be overridden with RGB hex
 #[derive(Debug, Clone)]
 pub struct ColorConfig {
     // Theme colors
@@ -33,16 +33,15 @@ pub struct ColorConfig {
     pub title: ThemeColor,
     pub key: ThemeColor,
     pub value: ThemeColor,
-    // ASCII art colors (1-9)
-    pub art_1: (u8, u8, u8),
-    pub art_2: (u8, u8, u8),
-    pub art_3: (u8, u8, u8),
-    pub art_4: (u8, u8, u8),
-    pub art_5: (u8, u8, u8),
-    pub art_6: (u8, u8, u8),
-    pub art_7: (u8, u8, u8),
-    pub art_8: (u8, u8, u8),
-    pub art_9: (u8, u8, u8),
+    // ASCII art colors (1-8) - inkline uses 0-indexed placeholders {0} through {7}
+    pub art_1: ThemeColor,
+    pub art_2: ThemeColor,
+    pub art_3: ThemeColor,
+    pub art_4: ThemeColor,
+    pub art_5: ThemeColor,
+    pub art_6: ThemeColor,
+    pub art_7: ThemeColor,
+    pub art_8: ThemeColor,
 }
 
 // Toggle settings for Core section keys
@@ -51,6 +50,7 @@ pub struct CoreToggles {
     pub os: bool,
     pub kernel: bool,
     pub uptime: bool,
+    pub init: bool,
 }
 
 impl Default for CoreToggles {
@@ -59,6 +59,7 @@ impl Default for CoreToggles {
             os: true,
             kernel: true,
             uptime: true,
+            init: true,
         }
     }
 }
@@ -198,54 +199,17 @@ impl ThemePreset {
 
 }
 
-// Convert ThemeColor to RGB tuple
-fn theme_color_to_rgb(color: ThemeColor) -> (u8, u8, u8) {
-    match color {
-        ThemeColor::Rgb(r, g, b) => (r, g, b),
-        // Convert ANSI to approximate RGB values
-        ThemeColor::Ansi(code) => match code {
-            0 => (0, 0, 0),        // Black
-            1 => (205, 49, 49),    // Red
-            2 => (13, 188, 121),   // Green
-            3 => (229, 229, 16),   // Yellow
-            4 => (36, 114, 200),   // Blue
-            5 => (188, 63, 188),   // Magenta
-            6 => (17, 168, 205),   // Cyan
-            7 => (229, 229, 229),  // White
-            8 => (102, 102, 102),  // Bright Black
-            9 => (241, 76, 76),    // Bright Red
-            10 => (35, 209, 139),  // Bright Green
-            11 => (245, 245, 67),  // Bright Yellow
-            12 => (59, 142, 234),  // Bright Blue
-            13 => (214, 112, 214), // Bright Magenta
-            14 => (41, 184, 219),  // Bright Cyan
-            15 => (255, 255, 255), // Bright White
-            _ => (229, 229, 229),  // Fallback to white
-        },
-    }
-}
-
-// Linear interpolation between two colors
-fn lerp_color(c1: (u8, u8, u8), c2: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
-    let lerp = |a: u8, b: u8| -> u8 {
-        let a = a as f32;
-        let b = b as f32;
-        (a + (b - a) * t).round() as u8
-    };
-    (lerp(c1.0, c2.0), lerp(c1.1, c2.1), lerp(c1.2, c2.2))
-}
-
-// Default art colors (rainbow spectrum) - used to detect if user customized them
-pub const DEFAULT_ART_COLORS: [(u8, u8, u8); 9] = [
-    (0xFF, 0x00, 0x00), // #FF0000 - Red
-    (0xFF, 0x80, 0x00), // #FF8000 - Orange
-    (0xFF, 0xFF, 0x00), // #FFFF00 - Yellow
-    (0x00, 0xFF, 0x00), // #00FF00 - Green
-    (0x00, 0xFF, 0xFF), // #00FFFF - Cyan
-    (0x00, 0xBF, 0xFF), // #00BFFF - Light Blue
-    (0x55, 0x55, 0xFF), // #5555FF - Blue
-    (0xAA, 0x55, 0xFF), // #AA55FF - Violet
-    (0xFF, 0x55, 0xFF), // #FF55FF - Magenta
+// Default art colors - ANSI codes that respect terminal color scheme
+// 8 colors for inkline's 0-indexed {0} through {7} placeholders
+pub const DEFAULT_ART_COLORS: [ThemeColor; 8] = [
+    ThemeColor::Ansi(9),  // Bright Red
+    ThemeColor::Ansi(11), // Bright Yellow
+    ThemeColor::Ansi(10), // Bright Green
+    ThemeColor::Ansi(14), // Bright Cyan
+    ThemeColor::Ansi(12), // Bright Blue
+    ThemeColor::Ansi(13), // Bright Magenta
+    ThemeColor::Ansi(1),  // Red
+    ThemeColor::Ansi(5),  // Magenta
 ];
 
 impl Default for ColorConfig {
@@ -264,49 +228,7 @@ impl Default for ColorConfig {
             art_6: DEFAULT_ART_COLORS[5],
             art_7: DEFAULT_ART_COLORS[6],
             art_8: DEFAULT_ART_COLORS[7],
-            art_9: DEFAULT_ART_COLORS[8],
         }
-    }
-}
-
-impl ColorConfig {
-    /// Check if art colors are still the default rainbow
-    pub fn has_default_art_colors(&self) -> bool {
-        self.art_1 == DEFAULT_ART_COLORS[0]
-            && self.art_2 == DEFAULT_ART_COLORS[1]
-            && self.art_3 == DEFAULT_ART_COLORS[2]
-            && self.art_4 == DEFAULT_ART_COLORS[3]
-            && self.art_5 == DEFAULT_ART_COLORS[4]
-            && self.art_6 == DEFAULT_ART_COLORS[5]
-            && self.art_7 == DEFAULT_ART_COLORS[6]
-            && self.art_8 == DEFAULT_ART_COLORS[7]
-            && self.art_9 == DEFAULT_ART_COLORS[8]
-    }
-
-    /// Generate gradient art colors from theme UI colors
-    /// Creates 9 colors by interpolating between border -> title -> key -> value -> border
-    pub fn generate_art_gradient(&self) -> [(u8, u8, u8); 9] {
-        let colors = [
-            theme_color_to_rgb(self.border),
-            theme_color_to_rgb(self.title),
-            theme_color_to_rgb(self.key),
-            theme_color_to_rgb(self.value),
-        ];
-
-        // Generate 9 colors by interpolating through the 4 theme colors in a cycle
-        let mut result = [(0u8, 0u8, 0u8); 9];
-        for i in 0..9 {
-            // Map 0-8 to positions along the 4-color gradient (with wrap-around)
-            let t = (i as f32) / 9.0 * 4.0;
-            let idx = t.floor() as usize;
-            let frac = t - t.floor();
-
-            let c1 = colors[idx % 4];
-            let c2 = colors[(idx + 1) % 4];
-
-            result[i] = lerp_color(c1, c2, frac);
-        }
-        result
     }
 }
 
@@ -453,7 +375,7 @@ pub fn load_config() -> Config {
     parse_config(&content)
 }
 
-// Track which section we're currently parsing
+// Track which section currently being parsed
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ConfigSection {
     None,
@@ -577,15 +499,14 @@ fn parse_config(content: &str) -> Config {
                         "title" => config.colors.title = ThemeColor::Rgb(color.0, color.1, color.2),
                         "key" => config.colors.key = ThemeColor::Rgb(color.0, color.1, color.2),
                         "value" => config.colors.value = ThemeColor::Rgb(color.0, color.1, color.2),
-                        "art_1" => config.colors.art_1 = color,
-                        "art_2" => config.colors.art_2 = color,
-                        "art_3" => config.colors.art_3 = color,
-                        "art_4" => config.colors.art_4 = color,
-                        "art_5" => config.colors.art_5 = color,
-                        "art_6" => config.colors.art_6 = color,
-                        "art_7" => config.colors.art_7 = color,
-                        "art_8" => config.colors.art_8 = color,
-                        "art_9" => config.colors.art_9 = color,
+                        "art_1" => config.colors.art_1 = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "art_2" => config.colors.art_2 = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "art_3" => config.colors.art_3 = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "art_4" => config.colors.art_4 = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "art_5" => config.colors.art_5 = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "art_6" => config.colors.art_6 = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "art_7" => config.colors.art_7 = ThemeColor::Rgb(color.0, color.1, color.2),
+                        "art_8" => config.colors.art_8 = ThemeColor::Rgb(color.0, color.1, color.2),
                         _ => {}
                     }
                 }
@@ -600,10 +521,16 @@ fn parse_config(content: &str) -> Config {
             } else if value == b"false" {
                 config.os_art = OsArtSetting::Disabled;
             } else if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                // Quoted string: os_art = "arch"
                 if let Ok(os_name) = std::str::from_utf8(&value[1..value.len() - 1]) {
                     if !os_name.is_empty() {
                         config.os_art = OsArtSetting::Specific(os_name.to_string());
                     }
+                }
+            } else if !value.is_empty() {
+                // Unquoted string: os_art = arch
+                if let Ok(os_name) = std::str::from_utf8(value) {
+                    config.os_art = OsArtSetting::Specific(os_name.to_string());
                 }
             }
         }
@@ -653,6 +580,7 @@ fn parse_config(content: &str) -> Config {
                 b"os" => config.core.os = is_true,
                 b"kernel" => config.core.kernel = is_true,
                 b"uptime" => config.core.uptime = is_true,
+                b"init" => config.core.init = is_true,
                 _ => {}
             }
         }
@@ -822,7 +750,7 @@ fn apply_settings_to_default(user_settings: &[(String, String, String)]) -> Stri
             let key = check_line[..eq_pos].trim();
             if !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 let lookup = (current_section.clone(), key.to_string());
-                // Skip if we already applied a setting for this section+key
+                // Skip if already applied a setting for this section+key
                 if applied.contains(&lookup) {
                     continue;
                 }

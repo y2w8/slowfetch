@@ -72,7 +72,7 @@ pub fn generate_config_toml(
     }
 
     output.push_str("\n## Custom ASCII art file path. (overrides default and OS art)\n");
-    output.push_str("## The file can use {1} through {9} for color placeholders.\n");
+    output.push_str("## The file can use {0} through {7} for color placeholders.\n");
     if let Some(path) = custom_art {
         output.push_str(&format!("custom_art = \"{}\"\n", collapse_home_path(path)));
     } else {
@@ -110,17 +110,16 @@ pub fn generate_config_toml(
     output.push_str("# key = \"#BD93F9\"     # Info keys\n");
     output.push_str("# value = \"#8BE9FD\"   # Info values\n");
 
-    output.push_str("\n## ASCII art colors - maps to {1} through {9} in art files.\n");
+    output.push_str("\n## ASCII art colors - maps to {0} through {7} in art files.\n");
     output.push_str("## Default: rainbow spectrum.\n\n");
-    output.push_str("# art_1 = \"#FF0000\"   # {1} - Red\n");
-    output.push_str("# art_2 = \"#FF8000\"   # {2} - Orange\n");
-    output.push_str("# art_3 = \"#FFFF00\"   # {3} - Yellow\n");
-    output.push_str("# art_4 = \"#00FF00\"   # {4} - Green\n");
-    output.push_str("# art_5 = \"#00FFFF\"   # {5} - Cyan\n");
-    output.push_str("# art_6 = \"#00BFFF\"   # {6} - Light Blue\n");
-    output.push_str("# art_7 = \"#5555FF\"   # {7} - Blue\n");
-    output.push_str("# art_8 = \"#AA55FF\"   # {8} - Violet\n");
-    output.push_str("# art_9 = \"#FF55FF\"   # {9} - Magenta\n");
+    output.push_str("# art_1 = \"#FF0000\"   # {0} - Red\n");
+    output.push_str("# art_2 = \"#FF8000\"   # {1} - Orange\n");
+    output.push_str("# art_3 = \"#FFFF00\"   # {2} - Yellow\n");
+    output.push_str("# art_4 = \"#00FF00\"   # {3} - Green\n");
+    output.push_str("# art_5 = \"#00FFFF\"   # {4} - Cyan\n");
+    output.push_str("# art_6 = \"#00BFFF\"   # {5} - Light Blue\n");
+    output.push_str("# art_7 = \"#5555FF\"   # {6} - Blue\n");
+    output.push_str("# art_8 = \"#AA55FF\"   # {7} - Violet\n");
 
     // core section
     output.push_str("\n[core]\n");
@@ -128,6 +127,7 @@ pub fn generate_config_toml(
     write_bool_setting(&mut output, "os", core.os, true);
     write_bool_setting(&mut output, "kernel", core.kernel, true);
     write_bool_setting(&mut output, "uptime", core.uptime, true);
+    write_bool_setting(&mut output, "init", core.init, true);
 
     // ardware section
     output.push_str("\n[hardware]\n");

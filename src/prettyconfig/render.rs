@@ -244,6 +244,7 @@ fn draw_toggle_grid(
         ("OS", app.core.os),
         ("Kernel", app.core.kernel),
         ("Uptime", app.core.uptime),
+        ("Init", app.core.init),
     ], cols[0], border_color, title_color, key_color);
 
     draw_toggle_column(frame, app, "Hardware", FocusArea::Hardware, &[

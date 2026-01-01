@@ -34,31 +34,27 @@ fn colors() -> ColorConfig {
     COLORS.get_or_init(ColorConfig::default).clone()
 }
 
+// Convert ThemeColor to DynColors for inkline
+fn theme_to_dyn(color: ThemeColor) -> DynColors {
+    match color {
+        ThemeColor::Rgb(r, g, b) => DynColors::Rgb(r, g, b),
+        ThemeColor::Ansi(code) => DynColors::Ansi(ansi_to_color(code)),
+    }
+}
+
 // Get ASCII art colors as DynColors array for inkline
-// If art colors are still default, generate gradient from theme UI colors
+// Returns 8 colors at indices 0-7 for inkline's {0} through {7} placeholders
 pub fn get_art_colors() -> Vec<DynColors> {
     let c = colors();
-
-    // If user hasn't customized art colors, generate gradient from theme colors
-    if c.has_default_art_colors() {
-        let gradient = c.generate_art_gradient();
-        return gradient
-            .iter()
-            .map(|&(r, g, b)| DynColors::Rgb(r, g, b))
-            .collect();
-    }
-
-    // Otherwise use the configured art colors
     vec![
-        DynColors::Rgb(c.art_1.0, c.art_1.1, c.art_1.2),
-        DynColors::Rgb(c.art_2.0, c.art_2.1, c.art_2.2),
-        DynColors::Rgb(c.art_3.0, c.art_3.1, c.art_3.2),
-        DynColors::Rgb(c.art_4.0, c.art_4.1, c.art_4.2),
-        DynColors::Rgb(c.art_5.0, c.art_5.1, c.art_5.2),
-        DynColors::Rgb(c.art_6.0, c.art_6.1, c.art_6.2),
-        DynColors::Rgb(c.art_7.0, c.art_7.1, c.art_7.2),
-        DynColors::Rgb(c.art_8.0, c.art_8.1, c.art_8.2),
-        DynColors::Rgb(c.art_9.0, c.art_9.1, c.art_9.2),
+        theme_to_dyn(c.art_1),
+        theme_to_dyn(c.art_2),
+        theme_to_dyn(c.art_3),
+        theme_to_dyn(c.art_4),
+        theme_to_dyn(c.art_5),
+        theme_to_dyn(c.art_6),
+        theme_to_dyn(c.art_7),
+        theme_to_dyn(c.art_8),
     ]
 }
 

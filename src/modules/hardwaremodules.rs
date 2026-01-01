@@ -603,9 +603,14 @@ pub fn laptop_battery() -> String {
 
 // Get screen resolution and refresh rate
 // Returns a Vec of (key, value) pairs for each monitor, primary first
-// Tries xrandr first, then Wayland-specific methods (niri, KDE, GNOME)
+// Tries DRM ioctl first (fastest), then xrandr, then Wayland-specific methods
 pub fn screen() -> Vec<(String, String)> {
-    // Try xrandr first (works on X11 and XWayland)
+    // Try DRM ioctl first - fastest method (~200µs vs ~5ms for subprocess)
+    if let Some(screens) = screen_from_drm() {
+        return screens;
+    }
+
+    // Try xrandr (works on X11 and XWayland)
     if let Some(screens) = screen_from_xrandr() {
         return screens;
     }
@@ -630,6 +635,338 @@ pub fn screen() -> Vec<(String, String)> {
     }
 
     vec![]
+}
+
+// DRM ioctl structures for getting connector mode info and rotation
+#[repr(C)]
+struct DrmModeGetConnector {
+    encoders_ptr: u64,
+    modes_ptr: u64,
+    props_ptr: u64,
+    prop_values_ptr: u64,
+    count_modes: u32,
+    count_props: u32,
+    count_encoders: u32,
+    encoder_id: u32,
+    connector_id: u32,
+    connector_type: u32,
+    connector_type_id: u32,
+    connection: u32,
+    mm_width: u32,
+    mm_height: u32,
+    subpixel: u32,
+    _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct DrmModeModeinfo {
+    clock: u32,
+    hdisplay: u16,
+    hsync_start: u16,
+    hsync_end: u16,
+    htotal: u16,
+    hskew: u16,
+    vdisplay: u16,
+    vsync_start: u16,
+    vsync_end: u16,
+    vtotal: u16,
+    vscan: u16,
+    vrefresh: u32,
+    flags: u32,
+    type_: u32,
+    name: [u8; 32],
+}
+
+#[repr(C)]
+struct DrmModeGetEncoder {
+    encoder_id: u32,
+    encoder_type: u32,
+    crtc_id: u32,
+    possible_crtcs: u32,
+    possible_clones: u32,
+}
+
+#[repr(C)]
+struct DrmModeGetPlaneRes {
+    plane_id_ptr: u64,
+    count_planes: u32,
+}
+
+#[repr(C)]
+struct DrmModeGetPlane {
+    plane_id: u32,
+    crtc_id: u32,
+    fb_id: u32,
+    possible_crtcs: u32,
+    gamma_size: u32,
+    count_format_types: u32,
+    format_type_ptr: u64,
+}
+
+#[repr(C)]
+struct DrmModeObjGetProperties {
+    props_ptr: u64,
+    prop_values_ptr: u64,
+    count_props: u32,
+    obj_id: u32,
+    obj_type: u32,
+}
+
+#[repr(C)]
+struct DrmModeGetProperty {
+    values_ptr: u64,
+    enum_blob_ptr: u64,
+    prop_id: u32,
+    flags: u32,
+    name: [u8; 32],
+    count_values: u32,
+    count_enum_blobs: u32,
+}
+
+// DRM ioctl numbers
+const DRM_IOCTL_MODE_GETCONNECTOR: libc::c_ulong = 0xc05064a7;
+const DRM_IOCTL_MODE_GETENCODER: libc::c_ulong = 0xc01464a6;
+const DRM_IOCTL_MODE_GETPLANERESOURCES: libc::c_ulong = 0xc01064b5;
+const DRM_IOCTL_MODE_GETPLANE: libc::c_ulong = 0xc02064b6;
+const DRM_IOCTL_MODE_OBJ_GETPROPERTIES: libc::c_ulong = 0xc02064b9;
+const DRM_IOCTL_MODE_GETPROPERTY: libc::c_ulong = 0xc04064aa;
+const DRM_IOCTL_SET_CLIENT_CAP: libc::c_ulong = 0x4010640d;
+
+// DRM object types
+const DRM_MODE_OBJECT_PLANE: u32 = 0xeeeeeeee;
+
+// DRM rotation values (bitmask)
+const DRM_MODE_ROTATE_0: u64 = 1 << 0;
+const DRM_MODE_ROTATE_90: u64 = 1 << 1;
+const DRM_MODE_ROTATE_270: u64 = 1 << 3;
+
+// Get rotation for a CRTC by checking its primary plane's rotation property
+fn get_crtc_rotation(fd: i32, crtc_id: u32) -> u64 {
+    // Enable universal planes to access all planes including primary
+    let cap: [u64; 2] = [2, 1]; // DRM_CLIENT_CAP_UNIVERSAL_PLANES = 2, value = 1
+    unsafe { libc::ioctl(fd, DRM_IOCTL_SET_CLIENT_CAP, cap.as_ptr()) };
+
+    // Get plane resources
+    let mut plane_res = DrmModeGetPlaneRes {
+        plane_id_ptr: 0,
+        count_planes: 0,
+    };
+
+    if unsafe { libc::ioctl(fd, DRM_IOCTL_MODE_GETPLANERESOURCES, &mut plane_res) } < 0 {
+        return DRM_MODE_ROTATE_0;
+    }
+
+    if plane_res.count_planes == 0 {
+        return DRM_MODE_ROTATE_0;
+    }
+
+    let mut plane_ids: Vec<u32> = vec![0; plane_res.count_planes as usize];
+    plane_res.plane_id_ptr = plane_ids.as_mut_ptr() as u64;
+
+    if unsafe { libc::ioctl(fd, DRM_IOCTL_MODE_GETPLANERESOURCES, &mut plane_res) } < 0 {
+        return DRM_MODE_ROTATE_0;
+    }
+
+    // Find the plane associated with this CRTC
+    for &plane_id in &plane_ids {
+        let mut plane = DrmModeGetPlane {
+            plane_id,
+            crtc_id: 0,
+            fb_id: 0,
+            possible_crtcs: 0,
+            gamma_size: 0,
+            count_format_types: 0,
+            format_type_ptr: 0,
+        };
+
+        if unsafe { libc::ioctl(fd, DRM_IOCTL_MODE_GETPLANE, &mut plane) } < 0 {
+            continue;
+        }
+
+        // Check if this plane is attached to our CRTC
+        if plane.crtc_id != crtc_id {
+            continue;
+        }
+
+        // Get plane properties to find rotation
+        let mut obj_props = DrmModeObjGetProperties {
+            props_ptr: 0,
+            prop_values_ptr: 0,
+            count_props: 0,
+            obj_id: plane_id,
+            obj_type: DRM_MODE_OBJECT_PLANE,
+        };
+
+        if unsafe { libc::ioctl(fd, DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut obj_props) } < 0 {
+            continue;
+        }
+
+        if obj_props.count_props == 0 {
+            continue;
+        }
+
+        let mut props: Vec<u32> = vec![0; obj_props.count_props as usize];
+        let mut prop_values: Vec<u64> = vec![0; obj_props.count_props as usize];
+        obj_props.props_ptr = props.as_mut_ptr() as u64;
+        obj_props.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+
+        if unsafe { libc::ioctl(fd, DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &mut obj_props) } < 0 {
+            continue;
+        }
+
+        // Look for "rotation" property
+        for i in 0..obj_props.count_props as usize {
+            let mut prop = DrmModeGetProperty {
+                values_ptr: 0,
+                enum_blob_ptr: 0,
+                prop_id: props[i],
+                flags: 0,
+                name: [0; 32],
+                count_values: 0,
+                count_enum_blobs: 0,
+            };
+
+            if unsafe { libc::ioctl(fd, DRM_IOCTL_MODE_GETPROPERTY, &mut prop) } < 0 {
+                continue;
+            }
+
+            let name = std::str::from_utf8(&prop.name)
+                .unwrap_or("")
+                .trim_end_matches('\0');
+
+            if name == "rotation" {
+                return prop_values[i];
+            }
+        }
+    }
+
+    DRM_MODE_ROTATE_0
+}
+
+// Get screen info using DRM ioctl - much faster than spawning subprocesses
+fn screen_from_drm() -> Option<Vec<(String, String)>> {
+    use std::fs::File;
+    use std::os::unix::io::AsRawFd;
+
+    let fd = File::open("/dev/dri/card0").ok()?;
+    let raw_fd = fd.as_raw_fd();
+
+    let mut screens: Vec<(bool, String)> = Vec::new();
+
+    // Find connected displays via sysfs, get modes via ioctl
+    for entry in fs::read_dir("/sys/class/drm").ok()?.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        // Only process connector entries like card0-eDP-1, card0-DP-1
+        if !name_str.starts_with("card0-") || name_str.contains("Writeback") {
+            continue;
+        }
+
+        let path = entry.path();
+        let status = fs::read_to_string(path.join("status")).ok()?;
+
+        if status.trim() != "connected" {
+            continue;
+        }
+
+        // Get connector_id from sysfs
+        let connector_id: u32 = fs::read_to_string(path.join("connector_id"))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()?;
+
+        // Get connector info via DRM ioctl
+        let mut conn = DrmModeGetConnector {
+            encoders_ptr: 0,
+            modes_ptr: 0,
+            props_ptr: 0,
+            prop_values_ptr: 0,
+            count_modes: 0,
+            count_props: 0,
+            count_encoders: 0,
+            encoder_id: 0,
+            connector_id,
+            connector_type: 0,
+            connector_type_id: 0,
+            connection: 0,
+            mm_width: 0,
+            mm_height: 0,
+            subpixel: 0,
+            _pad: 0,
+        };
+
+        // First ioctl call to get counts
+        if unsafe { libc::ioctl(raw_fd, DRM_IOCTL_MODE_GETCONNECTOR, &mut conn) } < 0 {
+            continue;
+        }
+
+        if conn.count_modes == 0 {
+            continue;
+        }
+
+        // Allocate buffers for all arrays
+        let mut modes: Vec<DrmModeModeinfo> = vec![DrmModeModeinfo::default(); conn.count_modes as usize];
+        let mut encoders: Vec<u32> = vec![0u32; conn.count_encoders as usize];
+        let mut props: Vec<u32> = vec![0u32; conn.count_props as usize];
+        let mut prop_values: Vec<u64> = vec![0u64; conn.count_props as usize];
+
+        conn.modes_ptr = modes.as_mut_ptr() as u64;
+        conn.encoders_ptr = encoders.as_mut_ptr() as u64;
+        conn.props_ptr = props.as_mut_ptr() as u64;
+        conn.prop_values_ptr = prop_values.as_mut_ptr() as u64;
+
+        // Second ioctl call to get actual data
+        if unsafe { libc::ioctl(raw_fd, DRM_IOCTL_MODE_GETCONNECTOR, &mut conn) } < 0 {
+            continue;
+        }
+
+        // Get CRTC ID via encoder to check rotation
+        let mut crtc_id: u32 = 0;
+        if conn.encoder_id != 0 {
+            let mut encoder = DrmModeGetEncoder {
+                encoder_id: conn.encoder_id,
+                encoder_type: 0,
+                crtc_id: 0,
+                possible_crtcs: 0,
+                possible_clones: 0,
+            };
+            if unsafe { libc::ioctl(raw_fd, DRM_IOCTL_MODE_GETENCODER, &mut encoder) } >= 0 {
+                crtc_id = encoder.crtc_id;
+            }
+        }
+
+        // Check rotation from CRTC's plane
+        let rotation = if crtc_id != 0 {
+            get_crtc_rotation(raw_fd, crtc_id)
+        } else {
+            DRM_MODE_ROTATE_0
+        };
+
+        // First mode is typically the current/preferred one
+        if let Some(mode) = modes.first() {
+            let is_primary = name_str.contains("eDP");
+
+            // Determine portrait mode: 90° or 270° rotation, or physical portrait panel
+            let is_portrait = (rotation & (DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0
+                || mode.vdisplay > mode.hdisplay;
+
+            let icon = if is_portrait { "󰆡" } else { "󰏠" };
+            let display_str = format!(
+                "{} {}x{} @ {}Hz",
+                icon, mode.hdisplay, mode.vdisplay, mode.vrefresh
+            );
+            screens.push((is_primary, display_str));
+        }
+    }
+
+    if screens.is_empty() {
+        return None;
+    }
+
+    Some(format_screens(screens))
 }
 
 // Parse xrandr --current output
