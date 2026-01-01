@@ -127,6 +127,7 @@ pub fn generate_config_toml(
     write_bool_setting(&mut output, "os", core.os, true);
     write_bool_setting(&mut output, "kernel", core.kernel, true);
     write_bool_setting(&mut output, "uptime", core.uptime, true);
+    write_bool_setting(&mut output, "init", core.init, true);
 
     // ardware section
     output.push_str("\n[hardware]\n");

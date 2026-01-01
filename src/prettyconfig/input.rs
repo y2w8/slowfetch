@@ -134,6 +134,7 @@ impl App {
                     0 => self.core.os = !self.core.os,
                     1 => self.core.kernel = !self.core.kernel,
                     2 => self.core.uptime = !self.core.uptime,
+                    3 => self.core.init = !self.core.init,
                     _ => {}
                 }
                 self.update_preview();

@@ -140,3 +140,20 @@ pub fn uptime() -> String {
         "unsupported platform".to_string()
     }
 }
+
+// Get the init system (PID 1 process name)
+pub fn init() -> String {
+    use std::process::Command;
+
+    if let Ok(output) = Command::new("ps")
+        .args(["-p", "1", "-o", "comm="])
+        .output()
+    {
+        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !name.is_empty() {
+            return name;
+        }
+    }
+
+    "unknown".to_string()
+}

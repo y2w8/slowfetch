@@ -50,6 +50,7 @@ pub struct CoreToggles {
     pub os: bool,
     pub kernel: bool,
     pub uptime: bool,
+    pub init: bool,
 }
 
 impl Default for CoreToggles {
@@ -58,6 +59,7 @@ impl Default for CoreToggles {
             os: true,
             kernel: true,
             uptime: true,
+            init: true,
         }
     }
 }
@@ -578,6 +580,7 @@ fn parse_config(content: &str) -> Config {
                 b"os" => config.core.os = is_true,
                 b"kernel" => config.core.kernel = is_true,
                 b"uptime" => config.core.uptime = is_true,
+                b"init" => config.core.init = is_true,
                 _ => {}
             }
         }
