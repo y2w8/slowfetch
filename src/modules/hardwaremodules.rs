@@ -150,23 +150,27 @@ pub fn gpu() -> String {
 
 // Fetch GPU info fresh (no cache)
 fn gpu_fresh() -> String {
-    let laptop = is_laptop();
-
-    // On laptops, first try to get iGPU name from CPU string
-    // This gives proper names like "AMD Radeon 780M" instead of codenames like "HawkPoint1" >.>
-    if laptop {
-        if let Some(name) = igpu_from_cpuinfo() {
-            return name;
-        }
-    }
-
-    // Try vulkaninfo - fastest option when available
-    // On desktops, filter out integrated; on laptops, allow all
-    if let Some(name) = gpu_from_vulkaninfo(laptop) {
+    // First, try to find a discrete GPU (filter out integrated)
+    // This prioritises dGPU over iGPU when both are present
+    if let Some(name) = gpu_from_vulkaninfo(false) {
         return name;
     }
 
-    // Try glxinfo as fallback
+    if let Some(name) = gpu_from_lspci(false) {
+        return name;
+    }
+
+    // No discrete GPU found, try iGPU methods
+    // First try cpuinfo for friendly names like "AMD Radeon 780M"
+    if let Some(name) = igpu_from_cpuinfo() {
+        return name;
+    }
+
+    // Try vulkaninfo/glxinfo allowing integrated GPUs
+    if let Some(name) = gpu_from_vulkaninfo(true) {
+        return name;
+    }
+
     if let Some(name) = gpu_from_glxinfo() {
         return name;
     }
@@ -176,8 +180,8 @@ fn gpu_fresh() -> String {
         return name;
     }
 
-    // Final fallback: lspci
-    if let Some(name) = gpu_from_lspci(laptop) {
+    // Final fallback: lspci allowing integrated
+    if let Some(name) = gpu_from_lspci(true) {
         return name;
     }
 
