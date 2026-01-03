@@ -1,10 +1,10 @@
-{2}         -/oyddmdhs+:.
+{3}         -/oyddmdhs+:.
 {2}     -o{3}dNMMMMMMMMNNmhy+{1}-`
 {2}   -y{3}NMMMMMMMMMMMNNNmmdhy{1}+-
 {2} `o{3}mMMMMMMMMMMMMNmdmmmmddhhy{1}/`
-{2} om{3}MMMMMMMMMMMN{1}hhyyyo{3}hmdddhhhd{1}o`
-{2}.y{3}dMMMMMMMMMMd{1}hs++so/s{3}mdddhhhhdm{1}+`
-{2} oy{3}hdmNMMMMMMMN{1}dyooy{3}dmddddhhhhyhN{1}d.
+{2} om{3}MMMMMMMMMMM{1}N     {3}hmdddhhhd{1}o`
+{2}.y{3}dMMMMMMMMMM{1}d       {3}mdddhhhhdm{1}+`
+{2} oy{3}hdmNMMMMMMM{1}N     {3}dmddddhhhhyhN{1}d.
 {2}  :o{3}yhhdNNMMMMMMMNNNmmdddhhhhhyym{1}Mh
 {2}    .:{3}+sydNMMMMMNNNmmmdddhhhhhhmM{1}my
 {2}       /m{3}MMMMMMNNNmmmdddhhhhhmMNh{1}s:
@@ -14,5 +14,5 @@
 {2}+M{3}MMMMMMNNNNNmmmmdmNMNdso{1}/-
 {2}yM{3}MNNNNNNNmmmmmNNMmhs+/{1}-`
 {2}/h{3}MMNNNNNNNNMNdhs++/{1}-`
-{2}`/{3}ohdmmddhys+++/:{1}.`
+{2}`/{3}ohdmmddhys+++/{1}:.`
 {1}  `-//////:--.
