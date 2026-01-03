@@ -32,6 +32,7 @@ fn format_theme(preset: ThemePreset) -> &'static str {
         ThemePreset::Gruvbox => "gruvbox",
         ThemePreset::Eldritch => "eldritch",
         ThemePreset::Kanagawa => "kanagawa",
+        ThemePreset::RosePine => "rosepine",
     }
 }
 

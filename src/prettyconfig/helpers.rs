@@ -13,7 +13,7 @@ pub fn theme_color_to_ratatui(color: ThemeColor) -> Color {
 }
 
 // Get all available theme presets for cycling
-pub const THEME_PRESETS: [ThemePreset; 7] = [
+pub const THEME_PRESETS: [ThemePreset; 8] = [
     ThemePreset::Default,
     ThemePreset::Dracula,
     ThemePreset::Catppuccin,
@@ -21,6 +21,7 @@ pub const THEME_PRESETS: [ThemePreset; 7] = [
     ThemePreset::Gruvbox,
     ThemePreset::Eldritch,
     ThemePreset::Kanagawa,
+    ThemePreset::RosePine,
 ];
 
 // Get theme name for display
@@ -33,6 +34,7 @@ pub fn theme_name(preset: ThemePreset) -> &'static str {
         ThemePreset::Gruvbox => "Gruvbox",
         ThemePreset::Eldritch => "Eldritch",
         ThemePreset::Kanagawa => "Kanagawa",
+        ThemePreset::RosePine => "Rosé Pine",
     }
 }
 

@@ -15,6 +15,7 @@ pub enum ThemePreset {
     Gruvbox,
     Eldritch,
     Kanagawa,
+    RosePine,
 }
 
 impl ThemePreset {
@@ -28,6 +29,7 @@ impl ThemePreset {
             "gruvbox" | "gruv" => Some(Self::Gruvbox),
             "eldritch" => Some(Self::Eldritch),
             "kanagawa" | "kana" => Some(Self::Kanagawa),
+            "rosepine" | "rose-pine" | "rose_pine" => Some(Self::RosePine),
             _ => None,
         }
     }
@@ -82,6 +84,13 @@ impl ThemePreset {
                 ThemeColor::Rgb(0x76, 0x94, 0x6A), // title:  #C0A36E - autumnGreen
                 ThemeColor::Rgb(0x7E, 0x9C, 0xD8), // key:    #7E9CD8 - crystalBlue
                 ThemeColor::Rgb(0x98, 0xBB, 0x6C), // value:  #98BB6C - springGreen
+            ),
+            Self::RosePine => (
+                // Rosé Pine - https://rosepinetheme.com/palette
+                ThemeColor::Rgb(0xC4, 0xA7, 0xE7), // border: #C4A7E7 - iris
+                ThemeColor::Rgb(0xEB, 0xBB, 0xBA), // title:  #EBBCBA - rose
+                ThemeColor::Rgb(0x31, 0x74, 0x8F), // key:    #31748F - pine
+                ThemeColor::Rgb(0x9C, 0xCF, 0xD8), // value:  #9CCFD8 - foam
             ),
         }
     }
@@ -156,6 +165,17 @@ impl ThemePreset {
                 ThemeColor::Rgb(0x7E, 0x9C, 0xD8), // {5} crystalBlue
                 ThemeColor::Rgb(0x95, 0x7F, 0xB8), // {6} oniViolet
                 ThemeColor::Rgb(0xD2, 0x7E, 0x99), // {7} sakuraPink
+            ]),
+            Self::RosePine => Some([
+                // Rosé Pine palette
+                ThemeColor::Rgb(0xEB, 0x6F, 0x92), // {0} love (red/pink)
+                ThemeColor::Rgb(0xF6, 0xC1, 0x77), // {1} gold (yellow/orange)
+                ThemeColor::Rgb(0xEA, 0x9A, 0x97), // {2} rose (soft pink)
+                ThemeColor::Rgb(0x31, 0x74, 0x8F), // {3} pine (teal/green)
+                ThemeColor::Rgb(0x9C, 0xCF, 0xD8), // {4} foam (cyan)
+                ThemeColor::Rgb(0xC4, 0xA7, 0xE7), // {5} iris (purple)
+                ThemeColor::Rgb(0xEB, 0xBB, 0xBA), // {6} rose (light pink)
+                ThemeColor::Rgb(0x90, 0x8C, 0xAA), // {7} subtle (muted lavender)
             ]),
         }
     }
