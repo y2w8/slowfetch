@@ -10,12 +10,24 @@ use crate::visuals::renderer::{self, Section};
 pub fn update_preview(app: &mut App) {
     // Set preview colors based on current theme
     let (border, title, key, value) = app.theme.colors();
+
+    // Get art colors from theme (or use defaults for Default theme)
+    let art_colors = app.theme.art_colors();
+    let default_art = crate::configloader::DEFAULT_ART_COLORS;
+
     let preview_colors = crate::configloader::ColorConfig {
         border,
         title,
         key,
         value,
-        ..crate::configloader::ColorConfig::default()
+        art_1: art_colors.map_or(default_art[0], |a| a[0]),
+        art_2: art_colors.map_or(default_art[1], |a| a[1]),
+        art_3: art_colors.map_or(default_art[2], |a| a[2]),
+        art_4: art_colors.map_or(default_art[3], |a| a[3]),
+        art_5: art_colors.map_or(default_art[4], |a| a[4]),
+        art_6: art_colors.map_or(default_art[5], |a| a[5]),
+        art_7: art_colors.map_or(default_art[6], |a| a[6]),
+        art_8: art_colors.map_or(default_art[7], |a| a[7]),
     };
     colorcontrol::set_preview_colors(Some(preview_colors));
 

@@ -6,6 +6,7 @@ mod dostuff;
 mod helpers;
 mod modules;
 mod prettyconfig;
+mod themes;
 mod visuals;
 
 use clap::Parser;

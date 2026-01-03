@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 use memchr::{memchr, memchr_iter};
+pub use crate::themes::ThemePreset;
 
 // Embed the default config file at compile time
 const DEFAULT_CONFIG: &str = include_str!("config.toml");
@@ -112,91 +113,6 @@ impl Default for UserspaceToggles {
             terminal_font: true,
         }
     }
-}
-
-// Theme presets for theme colors (border, title, key, value)
-// Default uses None to indicate "use terminal's default colors"
-#[derive(Debug, Clone, Copy, Default)]
-pub enum ThemePreset {
-    #[default]
-    Default,
-    Dracula,
-    Catppuccin,
-    Nord,
-    Gruvbox,
-    Eldritch,
-    Kanagawa,
-}
-
-impl ThemePreset {
-    // Parse theme name from string
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "default" | "terminal" | "tty" => Some(Self::Default),
-            "dracula" => Some(Self::Dracula),
-            "catppuccin" | "cat" => Some(Self::Catppuccin),
-            "nord" => Some(Self::Nord),
-            "gruvbox" | "gruv" => Some(Self::Gruvbox),
-            "eldritch" => Some(Self::Eldritch),
-            "kanagawa" | "kana" => Some(Self::Kanagawa),
-            _ => None,
-        }
-    }
-
-    // Get theme colors: (border, title, key, value)
-    pub fn colors(self) -> (ThemeColor, ThemeColor, ThemeColor, ThemeColor) {
-        match self {
-            // Default: ANSI 1 (red), 3 (yellow), 4 (blue), 5 (magenta)
-            Self::Default => (
-                ThemeColor::Ansi(4), // border: magenta
-                ThemeColor::Ansi(5), // title:  pink
-                ThemeColor::Ansi(5), // key:    pink
-                ThemeColor::Ansi(6), // value:  light blue
-            ),
-            Self::Dracula => (
-                ThemeColor::Rgb(0xFF, 0x79, 0xC6), // border: #FF79C6 - pink
-                ThemeColor::Rgb(0xFF, 0x79, 0xC6), // title:  #FF79C6 - pink
-                ThemeColor::Rgb(0xBD, 0x93, 0xF9), // key:    #BD93F9 - purple
-                ThemeColor::Rgb(0x8B, 0xE9, 0xFD), // value:  #8BE9FD - cyan
-            ),
-            Self::Catppuccin => (
-                // Catppuccin Mocha - https://catppuccin.com/palette
-                ThemeColor::Rgb(0xF3, 0x8B, 0xA8), // border: #F5C2E7 - pinky red
-                ThemeColor::Rgb(0xCB, 0xA6, 0xF7), // title:  #CBA6F7 - mauve
-                ThemeColor::Rgb(0x89, 0xB4, 0xFA), // key:    #89B4FA - blue
-                ThemeColor::Rgb(0xF5, 0xC2, 0xE7), // value:  #F38BA8 - pink
-            ),
-            Self::Nord => (
-                // Nord - https://nordtheme.com/docs/colors-and-palettes
-                ThemeColor::Rgb(0xB4, 0x8E, 0xAD), // border: #B48EAD - nord15 purple
-                ThemeColor::Rgb(0x88, 0xC0, 0xD0), // title:  #88C0D0 - nord8 frost cyan
-                ThemeColor::Rgb(0x81, 0xA1, 0xC1), // key:    #81A1C1 - nord9 frost blue
-                ThemeColor::Rgb(0x5E, 0x81, 0xAC), // value:  #5E81AC - nord10 frost dark blue
-            ),
-            Self::Gruvbox => (
-                // Gruvbox Dark - https://github.com/morhetz/gruvbox
-                ThemeColor::Rgb(0xB8, 0xBB, 0x26), // border: #B8BB26 - bright green
-                ThemeColor::Rgb(0xFB, 0x49, 0x34), // title:  #FB4934 - bright red
-                ThemeColor::Rgb(0xFA, 0xBD, 0x2F), // key:    #FABD2F - bright yellow
-                ThemeColor::Rgb(0x83, 0xA5, 0x98), // value:  #83A598 - bright blue
-            ),
-            Self::Eldritch => (
-                // Eldritch - https://github.com/eldritch-theme/eldritch
-                ThemeColor::Rgb(0xF2, 0x65, 0xB5), // border: #F265B5 - pink
-                ThemeColor::Rgb(0xA4, 0x8C, 0xF2), // title:  #A48CF2 - purple
-                ThemeColor::Rgb(0x37, 0xF4, 0x99), // key:    #37F499 - green
-                ThemeColor::Rgb(0x04, 0xD1, 0xF9), // value:  #04D1F9 - cyan
-            ),
-            Self::Kanagawa => (
-                // Kanagawa Wave - https://github.com/rebelot/kanagawa.nvim
-                ThemeColor::Rgb(0xC0, 0xA3, 0x6E), // border: #76946A - boatYellow2
-                ThemeColor::Rgb(0x76, 0x94, 0x6A), // title:  #C0A36E - autumnGreen
-                ThemeColor::Rgb(0x7E, 0x9C, 0xD8), // key:    #7E9CD8 - crystalBlue
-                ThemeColor::Rgb(0x98, 0xBB, 0x6C), // value:  #98BB6C - springGreen
-            ),
-        }
-    }
-
 }
 
 // Default art colors - ANSI codes that respect terminal color scheme
@@ -424,11 +340,23 @@ fn parse_config(content: &str) -> Config {
             if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
                 if let Ok(theme_name) = std::str::from_utf8(&value[1..value.len() - 1]) {
                     if let Some(preset) = ThemePreset::from_str(theme_name) {
+                        // Apply UI colors
                         let (border, title, key, val) = preset.colors();
                         config.colors.border = border;
                         config.colors.title = title;
                         config.colors.key = key;
                         config.colors.value = val;
+                        // Apply art colors (if theme provides them)
+                        if let Some(art) = preset.art_colors() {
+                            config.colors.art_1 = art[0];
+                            config.colors.art_2 = art[1];
+                            config.colors.art_3 = art[2];
+                            config.colors.art_4 = art[3];
+                            config.colors.art_5 = art[4];
+                            config.colors.art_6 = art[5];
+                            config.colors.art_7 = art[6];
+                            config.colors.art_8 = art[7];
+                        }
                     }
                 }
             }
