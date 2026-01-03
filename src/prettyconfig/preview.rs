@@ -1,13 +1,21 @@
 // Preview generation for prettyconfig TUI
 // Handles live preview updates and section filtering
 
-use crate::configloader::{Config, CoreToggles, HardwareToggles, ThemePreset, UserspaceToggles};
+use crate::configloader::{Config, CoreToggles, HardwareToggles, NerdFontSetting, ThemePreset, UserspaceToggles};
+use crate::helpers;
 use crate::prettyconfig::navigation::App;
 use crate::visuals::colorcontrol;
 use crate::visuals::renderer::{self, Section};
 
 // Update the preview based on current app state
 pub fn update_preview(app: &mut App) {
+    // Set nerd font override based on current setting
+    helpers::set_nerd_font_override(match app.nerd_fonts {
+        NerdFontSetting::Auto => 0,
+        NerdFontSetting::ForceOn => 1,
+        NerdFontSetting::ForceOff => 2,
+    });
+
     // Set preview colors based on current theme
     let (border, title, key, value) = app.theme.colors();
 

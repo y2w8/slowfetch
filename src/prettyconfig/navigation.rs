@@ -2,7 +2,7 @@
 // Contains FocusArea enum, App struct, and navigation methods
 
 use crate::configloader::{
-    Config, CoreToggles, HardwareToggles, OsArtSetting, ThemePreset, UserspaceToggles,
+    Config, CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
 };
 use crate::dostuff;
 use crate::modules::asciimodule;
@@ -17,45 +17,41 @@ use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 // Focus areas for Tab navigation
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FocusArea {
-    Art,       // Theme, OS Art, Custom Art path
-    Image,     // Image toggle, Image path
+    General,   // Theme, Nerd Fonts toggle
+    Art,       // OS Art, Custom Art path, Image toggle, Image path
     Core,      // Core toggles
     Hardware,  // Hardware toggles
     Userspace, // Userspace toggles
-    Buttons,   // Save/Cancel
 }
 
 impl FocusArea {
     pub fn next(self) -> Self {
         match self {
-            Self::Art => Self::Image,
-            Self::Image => Self::Core,
+            Self::General => Self::Art,
+            Self::Art => Self::Core,
             Self::Core => Self::Hardware,
             Self::Hardware => Self::Userspace,
-            Self::Userspace => Self::Buttons,
-            Self::Buttons => Self::Art,
+            Self::Userspace => Self::General,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            Self::Art => Self::Buttons,
-            Self::Image => Self::Art,
-            Self::Core => Self::Image,
+            Self::General => Self::Userspace,
+            Self::Art => Self::General,
+            Self::Core => Self::Art,
             Self::Hardware => Self::Core,
             Self::Userspace => Self::Hardware,
-            Self::Buttons => Self::Userspace,
         }
     }
 
     pub fn max_index(self) -> usize {
         match self {
-            Self::Art => 2,       // Theme, OS Art, Custom Art
-            Self::Image => 1,     // Enabled, Path
+            Self::General => 1,   // Theme, Nerd Fonts
+            Self::Art => 3,       // OS Art, Custom Art, Image Enabled, Image Path
             Self::Core => 3,      // OS, Kernel, Uptime, Init
             Self::Hardware => 5,  // CPU, GPU, Memory, Storage, Battery, Screen
             Self::Userspace => 6, // Packages, Terminal, Shell, WM, UI, Editor, Term Font
-            Self::Buttons => 1,   // Save, Cancel
         }
     }
 }
@@ -64,6 +60,7 @@ impl FocusArea {
 pub struct App {
     // Config values
     pub theme: ThemePreset,
+    pub nerd_fonts: NerdFontSetting,
     pub os_art: OsArtSetting,
     pub custom_art: Option<String>,
     pub image: bool,
@@ -103,8 +100,8 @@ pub struct App {
 // Cached layout regions for mouse click detection
 #[derive(Default, Clone)]
 pub struct LayoutRegions {
+    pub general_box: Rect,
     pub art_box: Rect,
-    pub image_box: Rect,
     pub core_box: Rect,
     pub hardware_box: Rect,
     pub userspace_box: Rect,
@@ -135,6 +132,7 @@ impl App {
 
         let mut app = Self {
             theme,
+            nerd_fonts: config.nerd_fonts,
             os_art: config.os_art.clone(),
             custom_art: config.custom_art.clone(),
             image: config.image,
@@ -143,7 +141,7 @@ impl App {
             hardware: config.hardware.clone(),
             userspace: config.userspace.clone(),
 
-            focus: FocusArea::Art,
+            focus: FocusArea::General,
             index: 0,
 
             editing: false,
@@ -274,6 +272,51 @@ impl App {
         };
     }
 
+    pub fn cycle_nerd_fonts_next(&mut self) {
+        self.nerd_fonts = match self.nerd_fonts {
+            NerdFontSetting::Auto => NerdFontSetting::ForceOn,
+            NerdFontSetting::ForceOn => NerdFontSetting::ForceOff,
+            NerdFontSetting::ForceOff => NerdFontSetting::Auto,
+        };
+        self.reload_sections_for_nerd_fonts();
+    }
+
+    pub fn cycle_nerd_fonts_prev(&mut self) {
+        self.nerd_fonts = match self.nerd_fonts {
+            NerdFontSetting::Auto => NerdFontSetting::ForceOff,
+            NerdFontSetting::ForceOn => NerdFontSetting::Auto,
+            NerdFontSetting::ForceOff => NerdFontSetting::ForceOn,
+        };
+        self.reload_sections_for_nerd_fonts();
+    }
+
+    fn reload_sections_for_nerd_fonts(&mut self) {
+        // Set the nerd font override before reloading sections
+        crate::helpers::set_nerd_font_override(match self.nerd_fonts {
+            NerdFontSetting::Auto => 0,
+            NerdFontSetting::ForceOn => 1,
+            NerdFontSetting::ForceOff => 2,
+        });
+
+        // Reload sections with all toggles enabled to get new bar styles
+        let full_config = Config {
+            os_art: self.os_art.clone(),
+            colors: crate::configloader::ColorConfig::default(),
+            custom_art: self.custom_art.clone(),
+            image: self.image,
+            image_path: self.image_path.clone(),
+            nerd_fonts: self.nerd_fonts,
+            core: CoreToggles { os: true, kernel: true, uptime: true, init: true },
+            hardware: HardwareToggles {
+                cpu: true, gpu: true, memory: true, storage: true, battery: true, screen: true,
+            },
+            userspace: UserspaceToggles {
+                packages: true, terminal: true, shell: true, wm: true, ui: true, editor: true, terminal_font: true,
+            },
+        };
+        self.cached_sections = dostuff::load_sections(&full_config);
+    }
+
     // Text editing methods
     pub fn start_editing(&mut self, initial: String) {
         self.editing = true;
@@ -290,11 +333,11 @@ impl App {
         };
 
         match self.focus {
-            FocusArea::Art if self.index == 2 => {
+            FocusArea::Art if self.index == 1 => {
                 self.custom_art = value;
                 self.update_preview();
             }
-            FocusArea::Image if self.index == 1 => {
+            FocusArea::Art if self.index == 3 => {
                 self.image_path = value;
                 self.update_image_protocol();
                 self.update_preview();

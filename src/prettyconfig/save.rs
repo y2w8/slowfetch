@@ -2,7 +2,7 @@
 // Generates TOML content matching the original config.toml format
 
 use crate::configloader::{
-    CoreToggles, HardwareToggles, OsArtSetting, ThemePreset, UserspaceToggles,
+    CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -49,6 +49,7 @@ fn collapse_home_path(path: &str) -> String {
 // Generate TOML config content
 pub fn generate_config_toml(
     theme: ThemePreset,
+    nerd_fonts: NerdFontSetting,
     os_art: &OsArtSetting,
     custom_art: &Option<String>,
     image: bool,
@@ -92,6 +93,13 @@ pub fn generate_config_toml(
         output.push_str(&format!("image_path = \"{}\"\n", collapse_home_path(path)));
     } else {
         output.push_str("# image_path = \"~/.config/slowfetch/image.png\"\n");
+    }
+
+    output.push_str("\n## Nerd Font icons - auto-detect, force on, or force off\n");
+    match nerd_fonts {
+        NerdFontSetting::Auto => output.push_str("# nerd_fonts = true\n"),
+        NerdFontSetting::ForceOn => output.push_str("nerd_fonts = true\n"),
+        NerdFontSetting::ForceOff => output.push_str("nerd_fonts = false\n"),
     }
 
     // colorssection
@@ -167,6 +175,7 @@ fn write_bool_setting(output: &mut String, key: &str, value: bool, default: bool
 //Save config to file
 pub fn save_config(
     theme: ThemePreset,
+    nerd_fonts: NerdFontSetting,
     os_art: &OsArtSetting,
     custom_art: &Option<String>,
     image: bool,
@@ -182,7 +191,7 @@ pub fn save_config(
         fs::create_dir_all(parent).map_err(|e| format!("Could not create config directory: {}", e))?;
     }
 
-    let content = generate_config_toml(theme, os_art, custom_art, image, image_path, core, hardware, userspace);
+    let content = generate_config_toml(theme, nerd_fonts, os_art, custom_art, image, image_path, core, hardware, userspace);
 
     fs::write(&path, content).map_err(|e| format!("Could not write config file: {}", e))?;
 

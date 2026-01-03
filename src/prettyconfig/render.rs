@@ -1,9 +1,17 @@
 // Rendering functions for prettyconfig TUI
 // All draw_* functions and ANSI parsing utilities
 
-use crate::configloader::OsArtSetting;
+use crate::configloader::{NerdFontSetting, OsArtSetting};
 use crate::prettyconfig::helpers::theme_name;
 use crate::prettyconfig::navigation::{App, FocusArea};
+
+fn nerd_font_name(setting: NerdFontSetting) -> &'static str {
+    match setting {
+        NerdFontSetting::Auto => "Auto",
+        NerdFontSetting::ForceOn => "On",
+        NerdFontSetting::ForceOff => "Off",
+    }
+}
 
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
@@ -13,7 +21,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
-use ratatui_image::StatefulImage;
 
 /// Main draw function - renders the entire UI
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -21,7 +28,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
     let main_chunks = Layout::vertical([
-        Constraint::Length(19),
+        Constraint::Length(18),
         Constraint::Min(10),
         Constraint::Length(1),
     ])
@@ -63,26 +70,79 @@ fn draw_settings_panel(
     };
 
     let rows = Layout::vertical([
-        Constraint::Length(5),
+        Constraint::Length(6),
         Constraint::Length(1),
         Constraint::Min(9),
-        Constraint::Length(1),
     ])
     .split(inner);
 
+    // Split top row horizontally: General (50%) | Art (50%)
     let top_cols = Layout::horizontal([
         Constraint::Percentage(50),
         Constraint::Percentage(50),
     ])
     .split(rows[0]);
 
-    draw_art_box(frame, app, top_cols[0], border_color, title_color, key_color, value_color);
-    draw_image_box(frame, app, top_cols[1], border_color, title_color, key_color, value_color);
+    draw_general_box(frame, app, top_cols[0], border_color, title_color, key_color, value_color);
+    draw_art_box(frame, app, top_cols[1], border_color, title_color, key_color, value_color);
     draw_toggle_grid(frame, app, rows[2], border_color, title_color, key_color);
-    draw_buttons(frame, app, rows[3], border_color, title_color);
 }
 
-/// Draw the art configuration box
+/// Draw the general configuration box (Theme + Nerd Fonts)
+fn draw_general_box(
+    frame: &mut Frame,
+    app: &mut App,
+    area: Rect,
+    border_color: Color,
+    title_color: Color,
+    key_color: Color,
+    value_color: Color,
+) {
+    // Store region for mouse hit-testing
+    app.layout.general_box = area;
+    let focused = app.focus == FocusArea::General;
+    let box_border = if focused { title_color } else { border_color };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_set(border::ROUNDED)
+        .border_style(Style::default().fg(box_border))
+        .title(Line::from(vec![
+            Span::raw(" "),
+            Span::styled("General", Style::default().fg(title_color)),
+            Span::raw(" "),
+        ]))
+        .title_alignment(Alignment::Center);
+
+    frame.render_widget(block, area);
+
+    let inner = Rect {
+        x: area.x + 2,
+        y: area.y + 1,
+        width: area.width.saturating_sub(4),
+        height: area.height.saturating_sub(2),
+    };
+
+    // Theme (index 0)
+    let selected = focused && app.index == 0;
+    let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
+    let line = Line::from(vec![
+        Span::styled("Theme:       ", style.fg(key_color)),
+        Span::styled(format!("◀ {:^12} ▶", theme_name(app.theme)), style.fg(value_color)),
+    ]);
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y, height: 1, ..inner });
+
+    // Nerd Fonts (index 1)
+    let selected = focused && app.index == 1;
+    let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
+    let line = Line::from(vec![
+        Span::styled("Nerd Fonts:  ", style.fg(key_color)),
+        Span::styled(format!("◀ {:^12} ▶", nerd_font_name(app.nerd_fonts)), style.fg(value_color)),
+    ]);
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 1, height: 1, ..inner });
+}
+
+/// Draw the art configuration box (OS Art, Custom Art, Image, Image Path)
 fn draw_art_box(
     frame: &mut Frame,
     app: &mut App,
@@ -117,17 +177,8 @@ fn draw_art_box(
         height: area.height.saturating_sub(2),
     };
 
-    // Theme
+    // OS Art (index 0)
     let selected = focused && app.index == 0;
-    let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
-    let line = Line::from(vec![
-        Span::styled("Theme:      ", style.fg(key_color)),
-        Span::styled(format!("◀ {:^12} ▶", theme_name(app.theme)), style.fg(value_color)),
-    ]);
-    frame.render_widget(Paragraph::new(line), Rect { y: inner.y, height: 1, ..inner });
-
-    // OS Art
-    let selected = focused && app.index == 1;
     let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
     let os_art_display = match &app.os_art {
         OsArtSetting::Disabled => "Disabled",
@@ -135,13 +186,13 @@ fn draw_art_box(
         OsArtSetting::Specific(s) => s.as_str(),
     };
     let line = Line::from(vec![
-        Span::styled("OS Art:     ", style.fg(key_color)),
+        Span::styled("OS Art:      ", style.fg(key_color)),
         Span::styled(format!("◀ {:^12} ▶", os_art_display), style.fg(value_color)),
     ]);
-    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 1, height: 1, ..inner });
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y, height: 1, ..inner });
 
-    // Custom Art
-    let selected = focused && app.index == 2;
+    // Custom Art (index 1)
+    let selected = focused && app.index == 1;
     let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
     let value_width = inner.width.saturating_sub(14) as usize;
     let custom_value = if app.editing && selected {
@@ -151,61 +202,25 @@ fn draw_art_box(
     };
     let display = truncate_path(&custom_value, value_width.saturating_sub(2));
     let line = Line::from(vec![
-        Span::styled("Custom Art: ", style.fg(key_color)),
+        Span::styled("Custom Art:  ", style.fg(key_color)),
         Span::styled(format!("[{}]", display), style.fg(value_color)),
     ]);
-    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 2, height: 1, ..inner });
-}
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 1, height: 1, ..inner });
 
-/// Draw the image configuration box
-fn draw_image_box(
-    frame: &mut Frame,
-    app: &mut App,
-    area: Rect,
-    border_color: Color,
-    title_color: Color,
-    key_color: Color,
-    value_color: Color,
-) {
-    // Store region for mouse hit-testing
-    app.layout.image_box = area;
-    let focused = app.focus == FocusArea::Image;
-    let box_border = if focused { title_color } else { border_color };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(border::ROUNDED)
-        .border_style(Style::default().fg(box_border))
-        .title(Line::from(vec![
-            Span::raw(" "),
-            Span::styled("Image", Style::default().fg(title_color)),
-            Span::raw(" "),
-        ]))
-        .title_alignment(Alignment::Center);
-
-    frame.render_widget(block, area);
-
-    let inner = Rect {
-        x: area.x + 2,
-        y: area.y + 1,
-        width: area.width.saturating_sub(4),
-        height: area.height.saturating_sub(2),
-    };
-
-    // Enabled toggle
-    let selected = focused && app.index == 0;
+    // Image Enabled (index 2)
+    let selected = focused && app.index == 2;
     let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
     let checkbox = if app.image { "[x]" } else { "[ ]" };
     let line = Line::from(vec![
-        Span::styled("Enabled:    ", style.fg(key_color)),
+        Span::styled("Image:       ", style.fg(key_color)),
         Span::styled(checkbox, style.fg(value_color)),
+        Span::styled(" (Kitty only)", Style::default().fg(Color::DarkGray)),
     ]);
-    frame.render_widget(Paragraph::new(line), Rect { y: inner.y, height: 1, ..inner });
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 2, height: 1, ..inner });
 
-    // Path
-    let selected = focused && app.index == 1;
+    // Image Path (index 3)
+    let selected = focused && app.index == 3;
     let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
-    let value_width = inner.width.saturating_sub(14) as usize;
     let path_value = if app.editing && selected {
         format_edit_buffer(&app.edit_buffer, app.cursor_pos)
     } else {
@@ -213,10 +228,10 @@ fn draw_image_box(
     };
     let display = truncate_path(&path_value, value_width.saturating_sub(2));
     let line = Line::from(vec![
-        Span::styled("Path:       ", style.fg(key_color)),
+        Span::styled("Image Path:  ", style.fg(key_color)),
         Span::styled(format!("[{}]", display), style.fg(value_color)),
     ]);
-    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 1, height: 1, ..inner });
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 3, height: 1, ..inner });
 }
 
 /// Draw the toggle grid with Core, Hardware, and Userspace columns
@@ -328,83 +343,21 @@ fn draw_toggle_column(
     }
 }
 
-/// Draw the Save/Cancel buttons
-fn draw_buttons(
-    frame: &mut Frame,
-    app: &mut App,
-    area: Rect,
-    border_color: Color,
-    title_color: Color,
-) {
-    let focused = app.focus == FocusArea::Buttons;
-    let center_area = Rect {
-        x: area.x + area.width / 2 - 15,
-        y: area.y,
-        width: 30,
-        height: 1,
-    };
 
-    let cols = Layout::horizontal([
-        Constraint::Length(12),
-        Constraint::Length(2),
-        Constraint::Length(12),
-    ])
-    .split(center_area);
-
-    // Store regions for mouse hit-testing
-    app.layout.save_button = cols[0];
-    app.layout.cancel_button = cols[2];
-
-    let save_selected = focused && app.index == 0;
-    let save_style = if save_selected {
-        Style::default().fg(title_color).add_modifier(Modifier::REVERSED)
-    } else {
-        Style::default().fg(border_color)
-    };
-    frame.render_widget(
-        Paragraph::new("[ Save ]").style(save_style).alignment(Alignment::Center),
-        cols[0],
-    );
-
-    let cancel_selected = focused && app.index == 1;
-    let cancel_style = if cancel_selected {
-        Style::default().fg(title_color).add_modifier(Modifier::REVERSED)
-    } else {
-        Style::default().fg(border_color)
-    };
-    frame.render_widget(
-        Paragraph::new("[ Cancel ]").style(cancel_style).alignment(Alignment::Center),
-        cols[2],
-    );
-}
-
-/// Draw the preview panel with ASCII art or image
+/// Draw the preview panel with ASCII art
 fn draw_preview_panel(
     frame: &mut Frame,
-    app: &mut App,
+    app: &App,
     area: Rect,
-    border_color: Color,
-    title_color: Color,
+    _border_color: Color,
+    _title_color: Color,
 ) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_set(border::ROUNDED)
-        .border_style(Style::default().fg(border_color))
-        .title(Line::from(vec![
-            Span::raw(" "),
-            Span::styled("Preview", Style::default().fg(title_color)),
-            Span::raw(" "),
-        ]))
-        .title_alignment(Alignment::Center);
-
-    frame.render_widget(block, area);
-
     // Disclaimer at the top of the preview panel
     let disclaimer = "~ Rough preview only - actual output will differ ~";
     let disclaimer_area = Rect {
-        x: area.x + 2,
-        y: area.y + 1,
-        width: area.width.saturating_sub(4),
+        x: area.x,
+        y: area.y,
+        width: area.width,
         height: 1,
     };
     frame.render_widget(
@@ -415,83 +368,13 @@ fn draw_preview_panel(
     );
 
     let inner = Rect {
-        x: area.x + 2,
-        y: area.y + 2,
-        width: area.width.saturating_sub(4),
-        height: area.height.saturating_sub(3),
+        x: area.x,
+        y: area.y + 1,
+        width: area.width,
+        height: area.height.saturating_sub(1),
     };
 
-    // If image mode is enabled and we have an image, render image + sections side by side
-    if app.image {
-        if let Some(ref mut protocol) = app.image_protocol {
-            // Use sections-only lines (without ASCII art)
-            let sections_height = app.sections_only_lines.len().min(inner.height as usize);
-            let sections_width = app.sections_only_lines
-                .iter()
-                .map(|line| strip_ansi_width(line))
-                .max()
-                .unwrap_or(0);
-
-            // Image box dimensions (including border) - make it square-ish based on sections height
-            // Terminal cells are ~2:1 aspect ratio, so content width = height * 2
-            // Add 2 for borders on each dimension
-            let img_box_height = sections_height.min(inner.height as usize);
-            let img_content_height = img_box_height.saturating_sub(2);
-            let img_content_width = (img_content_height * 2).min(inner.width as usize / 2);
-            let img_box_width = img_content_width + 2;
-
-            // Total width: image box + gap + sections
-            let total_width = img_box_width + 1 + sections_width;
-
-            // Calculate offsets to center the whole layout
-            let horizontal_offset = (inner.width as usize).saturating_sub(total_width) / 2;
-            let vertical_offset = (inner.height as usize).saturating_sub(sections_height) / 2;
-
-            // Render the image box (border) on the left
-            let image_box_area = Rect {
-                x: inner.x + horizontal_offset as u16,
-                y: inner.y + vertical_offset as u16,
-                width: img_box_width as u16,
-                height: img_box_height as u16,
-            };
-
-            let image_box = Block::default()
-                .borders(Borders::ALL)
-                .border_set(border::ROUNDED)
-                .border_style(Style::default().fg(border_color));
-            frame.render_widget(image_box, image_box_area);
-
-            // Render the image inside the box
-            let image_inner_area = Rect {
-                x: image_box_area.x + 1,
-                y: image_box_area.y + 1,
-                width: img_content_width as u16,
-                height: img_content_height as u16,
-            };
-
-            let image_widget = StatefulImage::default();
-            frame.render_stateful_widget(image_widget, image_inner_area, protocol);
-
-            // Render the sections text on the right
-            let sections_area = Rect {
-                x: inner.x + horizontal_offset as u16 + img_box_width as u16 + 1,
-                y: inner.y + vertical_offset as u16,
-                width: sections_width as u16,
-                height: sections_height as u16,
-            };
-
-            let sections_text: Vec<Line> = app.sections_only_lines
-                .iter()
-                .take(sections_height)
-                .map(|line| parse_ansi_to_line(line))
-                .collect();
-
-            frame.render_widget(Paragraph::new(sections_text), sections_area);
-            return;
-        }
-    }
-
-    // Fall back to text preview (ASCII art + sections)
+    // Text preview (ASCII art + sections)
     let content_height = app.preview_lines.len().min(inner.height as usize);
     let content_width = app.preview_lines
         .iter()
@@ -518,19 +401,52 @@ fn draw_preview_panel(
     frame.render_widget(Paragraph::new(preview_text), centered_area);
 }
 
-/// Draw the help bar at the bottom
-fn draw_help_bar(frame: &mut Frame, app: &App, area: Rect) {
+/// Draw the help bar at the bottom with clickable Save/Quit buttons
+fn draw_help_bar(frame: &mut Frame, app: &mut App, area: Rect) {
+    // Split into left (help text) and right (buttons)
+    let cols = Layout::horizontal([
+        Constraint::Min(1),
+        Constraint::Length(20),
+    ])
+    .split(area);
+
     let help_text = if app.editing {
         "Enter: Confirm | Esc: Cancel | Type to edit"
     } else {
-        "Tab: Switch section | ↑↓: Select | Enter/Space: Change | s: Save | q: Quit"
+        "Tab: Switch section | ↑↓: Select | Enter/Space: Change"
     };
 
     frame.render_widget(
         Paragraph::new(help_text)
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center),
-        area,
+        cols[0],
+    );
+
+    // Button area on the right
+    let button_cols = Layout::horizontal([
+        Constraint::Length(8),
+        Constraint::Length(2),
+        Constraint::Length(8),
+    ])
+    .split(cols[1]);
+
+    // Store regions for mouse hit-testing
+    app.layout.save_button = button_cols[0];
+    app.layout.cancel_button = button_cols[2];
+
+    frame.render_widget(
+        Paragraph::new("[Save]")
+            .style(Style::default().fg(Color::Green))
+            .alignment(Alignment::Center),
+        button_cols[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new("[Quit]")
+            .style(Style::default().fg(Color::Red))
+            .alignment(Alignment::Center),
+        button_cols[2],
     );
 }
 

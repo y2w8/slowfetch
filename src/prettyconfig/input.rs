@@ -74,12 +74,19 @@ impl App {
 
     fn handle_left(&mut self) {
         match self.focus {
-            FocusArea::Art => match self.index {
+            FocusArea::General => match self.index {
                 0 => {
                     self.theme = prev_theme(self.theme);
                     self.update_preview();
                 }
                 1 => {
+                    self.cycle_nerd_fonts_prev();
+                    self.update_preview();
+                }
+                _ => {}
+            },
+            FocusArea::Art => match self.index {
+                0 => {
                     self.cycle_os_art_prev();
                     self.update_preview();
                 }
@@ -91,12 +98,19 @@ impl App {
 
     fn handle_right(&mut self) {
         match self.focus {
-            FocusArea::Art => match self.index {
+            FocusArea::General => match self.index {
                 0 => {
                     self.theme = next_theme(self.theme);
                     self.update_preview();
                 }
                 1 => {
+                    self.cycle_nerd_fonts_next();
+                    self.update_preview();
+                }
+                _ => {}
+            },
+            FocusArea::Art => match self.index {
+                0 => {
                     self.cycle_os_art_next();
                     self.update_preview();
                 }
@@ -108,25 +122,29 @@ impl App {
 
     fn handle_select(&mut self) {
         match self.focus {
-            FocusArea::Art => match self.index {
+            FocusArea::General => match self.index {
                 0 => {
                     self.theme = next_theme(self.theme);
                     self.update_preview();
                 }
                 1 => {
+                    self.cycle_nerd_fonts_next();
+                    self.update_preview();
+                }
+                _ => {}
+            },
+            FocusArea::Art => match self.index {
+                0 => {
                     self.cycle_os_art_next();
                     self.update_preview();
                 }
-                2 => self.start_editing(self.custom_art.clone().unwrap_or_default()),
-                _ => {}
-            },
-            FocusArea::Image => match self.index {
-                0 => {
+                1 => self.start_editing(self.custom_art.clone().unwrap_or_default()),
+                2 => {
                     self.image = !self.image;
                     self.update_image_protocol();
                     self.update_preview();
                 }
-                1 => self.start_editing(self.image_path.clone().unwrap_or_default()),
+                3 => self.start_editing(self.image_path.clone().unwrap_or_default()),
                 _ => {}
             },
             FocusArea::Core => {
@@ -164,17 +182,13 @@ impl App {
                 }
                 self.update_preview();
             }
-            FocusArea::Buttons => match self.index {
-                0 => self.save_config(),
-                1 => self.should_exit = true,
-                _ => {}
-            },
         }
     }
 
     pub fn save_config(&mut self) {
         match save::save_config(
             self.theme,
+            self.nerd_fonts,
             &self.os_art,
             &self.custom_art,
             self.image,
@@ -216,21 +230,21 @@ impl App {
     fn handle_mouse_click(&mut self, x: u16, y: u16) {
         let layout = &self.layout;
 
-        // Check Art box
-        if point_in_rect(x, y, layout.art_box) {
-            self.focus = FocusArea::Art;
+        // Check General box
+        if point_in_rect(x, y, layout.general_box) {
+            self.focus = FocusArea::General;
             // Calculate which item was clicked (y offset from box top, minus border)
-            let item_y = y.saturating_sub(layout.art_box.y + 1);
-            self.index = (item_y as usize).min(FocusArea::Art.max_index());
+            let item_y = y.saturating_sub(layout.general_box.y + 1);
+            self.index = (item_y as usize).min(FocusArea::General.max_index());
             self.handle_select();
             return;
         }
 
-        // Check Image box
-        if point_in_rect(x, y, layout.image_box) {
-            self.focus = FocusArea::Image;
-            let item_y = y.saturating_sub(layout.image_box.y + 1);
-            self.index = (item_y as usize).min(FocusArea::Image.max_index());
+        // Check Art box
+        if point_in_rect(x, y, layout.art_box) {
+            self.focus = FocusArea::Art;
+            let item_y = y.saturating_sub(layout.art_box.y + 1);
+            self.index = (item_y as usize).min(FocusArea::Art.max_index());
             self.handle_select();
             return;
         }
@@ -264,16 +278,12 @@ impl App {
 
         // Check Save button
         if point_in_rect(x, y, layout.save_button) {
-            self.focus = FocusArea::Buttons;
-            self.index = 0;
             self.save_config();
             return;
         }
 
-        // Check Cancel button
+        // Check Quit button
         if point_in_rect(x, y, layout.cancel_button) {
-            self.focus = FocusArea::Buttons;
-            self.index = 1;
             self.should_exit = true;
         }
     }
