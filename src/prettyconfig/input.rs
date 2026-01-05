@@ -141,7 +141,6 @@ impl App {
                 1 => self.start_editing(self.custom_art.clone().unwrap_or_default()),
                 2 => {
                     self.image = !self.image;
-                    self.update_image_protocol();
                     self.update_preview();
                 }
                 3 => self.start_editing(self.image_path.clone().unwrap_or_default()),

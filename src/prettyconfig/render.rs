@@ -14,7 +14,7 @@ fn nerd_font_name(setting: NerdFontSetting) -> &'static str {
 }
 
 use ratatui::{
-    layout::{Alignment, Constraint, Layout, Rect},
+    layout::{Constraint, HorizontalAlignment, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols::border,
     text::{Line, Span},
@@ -58,7 +58,7 @@ fn draw_settings_panel(
             Span::styled("Settings", Style::default().fg(title_color)),
             Span::raw(" "),
         ]))
-        .title_alignment(Alignment::Center);
+        .title_alignment(HorizontalAlignment::Center);
 
     frame.render_widget(outer_block, area);
 
@@ -112,7 +112,7 @@ fn draw_general_box(
             Span::styled("General", Style::default().fg(title_color)),
             Span::raw(" "),
         ]))
-        .title_alignment(Alignment::Center);
+        .title_alignment(HorizontalAlignment::Center);
 
     frame.render_widget(block, area);
 
@@ -166,7 +166,7 @@ fn draw_art_box(
             Span::styled("Art", Style::default().fg(title_color)),
             Span::raw(" "),
         ]))
-        .title_alignment(Alignment::Center);
+        .title_alignment(HorizontalAlignment::Center);
 
     frame.render_widget(block, area);
 
@@ -306,7 +306,7 @@ fn draw_toggle_column(
             Span::styled(title, Style::default().fg(title_color)),
             Span::raw(" "),
         ]))
-        .title_alignment(Alignment::Center);
+        .title_alignment(HorizontalAlignment::Center);
 
     frame.render_widget(block, area);
 
@@ -363,7 +363,7 @@ fn draw_preview_panel(
     frame.render_widget(
         Paragraph::new(disclaimer)
             .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center),
+            .alignment(HorizontalAlignment::Center),
         disclaimer_area,
     );
 
@@ -419,7 +419,7 @@ fn draw_help_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(
         Paragraph::new(help_text)
             .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center),
+            .alignment(HorizontalAlignment::Center),
         cols[0],
     );
 
@@ -438,14 +438,14 @@ fn draw_help_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(
         Paragraph::new("[Save]")
             .style(Style::default().fg(Color::Green))
-            .alignment(Alignment::Center),
+            .alignment(HorizontalAlignment::Center),
         button_cols[0],
     );
 
     frame.render_widget(
         Paragraph::new("[Quit]")
             .style(Style::default().fg(Color::Red))
-            .alignment(Alignment::Center),
+            .alignment(HorizontalAlignment::Center),
         button_cols[2],
     );
 }

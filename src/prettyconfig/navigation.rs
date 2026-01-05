@@ -12,7 +12,6 @@ use crate::visuals::renderer::Section;
 
 use ratatui::layout::Rect;
 use ratatui::style::Color;
-use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 
 // Focus areas for Tab navigation
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -83,10 +82,6 @@ pub struct App {
     pub sections_only_lines: Vec<String>, // For image mode: just the sections without art
     pub cached_sections: (Section, Section, Section),
 
-    // Image preview state
-    pub picker: Picker,
-    pub image_protocol: Option<StatefulProtocol>,
-
     // Status message
     pub status_message: Option<String>,
 
@@ -124,12 +119,6 @@ impl App {
         };
         let sections = dostuff::load_sections(&full_config);
 
-        // Initialize image picker - query terminal for graphics protocol support
-        let picker = Picker::from_query_stdio().unwrap_or_else(|_| {
-            // Fallback to a reasonable default font size
-            Picker::from_fontsize((8, 16))
-        });
-
         let mut app = Self {
             theme,
             nerd_fonts: config.nerd_fonts,
@@ -152,9 +141,6 @@ impl App {
             sections_only_lines: Vec::new(),
             cached_sections: sections,
 
-            picker,
-            image_protocol: None,
-
             status_message: None,
             should_exit: false,
 
@@ -162,27 +148,7 @@ impl App {
         };
 
         app.update_preview();
-        app.update_image_protocol();
         app
-    }
-
-    pub fn update_image_protocol(&mut self) {
-        if !self.image {
-            self.image_protocol = None;
-            return;
-        }
-
-        // Try to load the image
-        let img_result = if let Some(ref path) = self.image_path {
-            image::ImageReader::open(path)
-                .ok()
-                .and_then(|reader| reader.decode().ok())
-        } else {
-            // Load embedded default image
-            image::load_from_memory(include_bytes!("../assets/default/slowfetch.png")).ok()
-        };
-
-        self.image_protocol = img_result.map(|img| self.picker.new_resize_protocol(img));
     }
 
     pub fn colors(&self) -> (Color, Color, Color, Color) {
@@ -339,7 +305,6 @@ impl App {
             }
             FocusArea::Art if self.index == 3 => {
                 self.image_path = value;
-                self.update_image_protocol();
                 self.update_preview();
             }
             _ => {}
