@@ -3,8 +3,8 @@
 // Colors are loaded from config.toml at runtime
 
 use crate::configloader::{ColorConfig, ThemeColor};
+use crate::visuals::asciiengine::{AnsiColor, ApplyTerminalColor, TerminalColor};
 use std::sync::{OnceLock, RwLock};
-use tintify::{DynColors, TintColorize, AnsiColors};
 
 // Global color config, initialized once from config file
 static COLORS: OnceLock<ColorConfig> = OnceLock::new();
@@ -34,58 +34,58 @@ fn colors() -> ColorConfig {
     COLORS.get_or_init(ColorConfig::default).clone()
 }
 
-// Convert ThemeColor to DynColors for inkline
-fn theme_to_dyn(color: ThemeColor) -> DynColors {
+// Convert ThemeColor to TerminalColor for ASCII art colorization
+fn theme_to_terminal_color(color: ThemeColor) -> TerminalColor {
     match color {
-        ThemeColor::Rgb(r, g, b) => DynColors::Rgb(r, g, b),
-        ThemeColor::Ansi(code) => DynColors::Ansi(ansi_to_color(code)),
+        ThemeColor::Rgb(r, g, b) => TerminalColor::Rgb(r, g, b),
+        ThemeColor::Ansi(code) => TerminalColor::Ansi(ansi_code_to_color(code)),
     }
 }
 
-// Get ASCII art colors as DynColors array for inkline
-// Returns 8 colors at indices 0-7 for inkline's {0} through {7} placeholders
-pub fn get_art_colors() -> Vec<DynColors> {
+// Get ASCII art colors as TerminalColor array
+// Returns 8 colors at indices 0-7 for {0} through {7} placeholders
+pub fn get_art_colors() -> Vec<TerminalColor> {
     let c = colors();
     vec![
-        theme_to_dyn(c.art_1),
-        theme_to_dyn(c.art_2),
-        theme_to_dyn(c.art_3),
-        theme_to_dyn(c.art_4),
-        theme_to_dyn(c.art_5),
-        theme_to_dyn(c.art_6),
-        theme_to_dyn(c.art_7),
-        theme_to_dyn(c.art_8),
+        theme_to_terminal_color(c.art_1),
+        theme_to_terminal_color(c.art_2),
+        theme_to_terminal_color(c.art_3),
+        theme_to_terminal_color(c.art_4),
+        theme_to_terminal_color(c.art_5),
+        theme_to_terminal_color(c.art_6),
+        theme_to_terminal_color(c.art_7),
+        theme_to_terminal_color(c.art_8),
     ]
 }
 
 // Helper to apply a ThemeColor to text
 fn apply_color(text: &str, color: ThemeColor) -> String {
     match color {
-        ThemeColor::Rgb(r, g, b) => text.truecolor(r, g, b).to_string(),
-        ThemeColor::Ansi(code) => text.color(ansi_to_color(code)).to_string(),
+        ThemeColor::Rgb(r, g, b) => text.with_rgb(r, g, b).to_string(),
+        ThemeColor::Ansi(code) => text.with_ansi(ansi_code_to_color(code)).to_string(),
     }
 }
 
-// Convert ANSI code to AnsiColors
-fn ansi_to_color(code: u8) -> AnsiColors {
+// Convert ANSI code (0-15) to AnsiColor enum
+fn ansi_code_to_color(code: u8) -> AnsiColor {
     match code {
-        0 => AnsiColors::Black,
-        1 => AnsiColors::Red,
-        2 => AnsiColors::Green,
-        3 => AnsiColors::Yellow,
-        4 => AnsiColors::Blue,
-        5 => AnsiColors::Magenta,
-        6 => AnsiColors::Cyan,
-        7 => AnsiColors::White,
-        8 => AnsiColors::BrightBlack,
-        9 => AnsiColors::BrightRed,
-        10 => AnsiColors::BrightGreen,
-        11 => AnsiColors::BrightYellow,
-        12 => AnsiColors::BrightBlue,
-        13 => AnsiColors::BrightMagenta,
-        14 => AnsiColors::BrightCyan,
-        15 => AnsiColors::BrightWhite,
-        _ => AnsiColors::White, // fallback
+        0 => AnsiColor::Black,
+        1 => AnsiColor::Red,
+        2 => AnsiColor::Green,
+        3 => AnsiColor::Yellow,
+        4 => AnsiColor::Blue,
+        5 => AnsiColor::Magenta,
+        6 => AnsiColor::Cyan,
+        7 => AnsiColor::White,
+        8 => AnsiColor::BrightBlack,
+        9 => AnsiColor::BrightRed,
+        10 => AnsiColor::BrightGreen,
+        11 => AnsiColor::BrightYellow,
+        12 => AnsiColor::BrightBlue,
+        13 => AnsiColor::BrightMagenta,
+        14 => AnsiColor::BrightCyan,
+        15 => AnsiColor::BrightWhite,
+        _ => AnsiColor::White, // fallback
     }
 }
 

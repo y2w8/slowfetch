@@ -1,8 +1,8 @@
 // ASCII art module for Slowfetch
-// Uses inkline to render colorized ASCII art
+// Renders colorized ASCII art using placeholder-based colorization
 
 use crate::visuals::colorcontrol::get_art_colors;
-use inkline::AsciiArt;
+use crate::visuals::asciiengine::AsciiArtColorizer;
 use std::fs;
 
 // The ASCII art for the Slowfetch logo Wide version.
@@ -38,15 +38,13 @@ const ASCII_ART_PIKA_SMOL: &str = include_str!("../assets/pikasmol.txt");
 // Render the wide ASCII art logo and return lines as a Vec
 pub fn get_wide_logo_lines() -> Vec<String> {
     let colors = get_art_colors();
-    let art = AsciiArt::new(ASCII_ART_WIDE, &colors, true);
-    art.map(|line| line.to_string()).collect()
+    AsciiArtColorizer::with_colors(ASCII_ART_WIDE, &colors, true).collect()
 }
 
 // Render the narrow ASCII art logo and return lines as a Vec
 pub fn get_narrow_logo_lines() -> Vec<String> {
     let colors = get_art_colors();
-    let art = AsciiArt::new(ASCII_ART_NARROW, &colors, true);
-    art.map(|line| line.to_string()).collect()
+    AsciiArtColorizer::with_colors(ASCII_ART_NARROW, &colors, true).collect()
 }
 
 // Get OS-specific art if available, returns None if no match
@@ -80,8 +78,7 @@ pub fn get_os_logo_lines(os_name: &str) -> Option<Vec<String>> {
 
     art_str.map(|s| {
         let colors = get_art_colors();
-        let art = AsciiArt::new(s, &colors, true);
-        art.map(|line| line.to_string()).collect()
+        AsciiArtColorizer::with_colors(s, &colors, true).collect()
     })
 }
 
@@ -116,8 +113,7 @@ pub fn get_os_logo_lines_smol(os_name: &str) -> Option<Vec<String>> {
 
     art_str.map(|s| {
         let colors = get_art_colors();
-        let art = AsciiArt::new(s, &colors, true);
-        art.map(|line| line.to_string()).collect()
+        AsciiArtColorizer::with_colors(s, &colors, true).collect()
     })
 }
 
@@ -126,6 +122,5 @@ pub fn get_os_logo_lines_smol(os_name: &str) -> Option<Vec<String>> {
 pub fn get_custom_art_lines(path: &str) -> Option<Vec<String>> {
     let content = fs::read_to_string(path).ok()?;
     let colors = get_art_colors();
-    let art = AsciiArt::new(&content, &colors, true);
-    Some(art.map(|line| line.to_string()).collect())
+    Some(AsciiArtColorizer::with_colors(&content, &colors, true).collect())
 }
