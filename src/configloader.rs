@@ -186,8 +186,20 @@ impl Default for Config {
 }
 
 // Parse a hex color string like "#FF79C6" or "FF79C6" into RGB tuple
+// Handles inline comments like: art_1 = "#FF0000"  # comment
 fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
-    let hex = hex.trim().trim_matches('"');
+    let hex = hex.trim();
+
+    // Handle quoted strings: extract content between quotes, ignoring anything after
+    let hex = if hex.starts_with('"') {
+        // Find closing quote
+        let end = hex[1..].find('"')?;
+        &hex[1..1 + end]
+    } else {
+        // Unquoted: strip inline comments (anything after whitespace or #)
+        hex.split_whitespace().next().unwrap_or(hex)
+    };
+
     let hex = hex.strip_prefix('#').unwrap_or(hex);
 
     if hex.len() != 6 {
