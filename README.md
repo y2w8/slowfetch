@@ -1,33 +1,72 @@
 ![Slowfetch Logo](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch.png)
 
-A fetch program for my girlfriend. She doesnt rice, So the goal was a terminal that looks riced for her out of the box.
+A fetch program for my girlfriend. She doesnt rice, so the goal was a fetch program that looks riced for her out of the box.
 
 I'm mainly doing this for the sake of learning and honestly making a fetch program with "pretty" defaults sounds good to me.
 
-As far as the hardware it supports, I run CashyOS which is Arch based. So its primarily designed around my setup. Expect weirdness as I iron out bugs with OS/Hardware support.
+As far as the hardware it supports, I run CachyOS which is Arch based and Gentoo. So its primarily designed around my setups. Expect weirdness as I iron out bugs with OS/Hardware support.
 
-I will be adding features as i go, but this is no means stable. Excpect some breaking changes, even in main.
+I will be adding features as I go, but this is by no means stable. Expect some breaking changes, even in main.
 
-## Documentation
+## Command Line Arguments
 
-The Argument `--os` can be used to display the OS art instead of the Slowfetch logo. For debug purposes you can force a distro using a name following the argument. example: `--os arch`
-The amount of supported of support OSs is currently small as I haven't settled on an art style yet.
+| Argument | Description |
+|----------|-------------|
+| `-o, --os [name]` | Display OS art instead of the Slowfetch logo. Optionally specify an OS name to force that logo (e.g. `--os arch`) |
+| `-i, --image [path]` | Display an image instead of ASCII art using Kitty graphics protocol. Optionally specify image path |
+| `-c, --config` | Launch the TUI configuration editor |
+| `-r, --refresh` | Force refresh of cached values (OS name and GPU) |
+| `-u, --update` | Update config file to latest version while preserving user settings |
 
-As of v0.2.5 you can pass images with the argument `-i` followed by a path `~/Pictures.examplepath.png`.
-This is very early stages so it is currently built around 1x1 aspect pictures. kitty image protocol does all the scaling so i reccomend sizing your images appropiatly for the terminal size you are expecting, 2000x2000 pixel pics will work but the scaling will make em look not great.
+## Configuration
+Configuration can be done either through the TUI interface or in the config file.
 
-Since V0.2.3 there is now a config file! Should be placed at `~/.config/slowfetch/config.toml`. Currently you can change the launch options for which art to display (sorry no custom art yet!). You can also change the colors used for the interface and modify the ascii art palette. The default config can be found in `src/config.toml`. As with everything else here, expect bugs.
+The config file is located at `~/.config/slowfetch/config.toml` and is created automatically on first run.
+
+### Display Options
+
+- `os_art` - Show OS-specific art instead of the Slowfetch logo. Set to `true` for auto-detect or specify an OS name
+- `custom_art` - Path to custom ASCII art file. Supports color placeholders `{0}` through `{7}`
+- `image` - Display an image instead of ASCII art (requires Kitty graphics protocol)
+- `image_path` - Custom image path when using image mode
+- `nerd_fonts` - Force nerd font icons on or off (overrides auto-detection)
+- `box_style` - Box corner style: `"rounded"` or `"square"`
+- `border_line_style` - Border line style: `"solid"`, `"dotted"`, or `"double"`
+
+### Color Themes
+
+Set a theme preset or customize individual colors using web hex format.
+
+Available themes: `tty`, `dracula`, `catppuccin`, `nord`, `gruvbox`, `eldritch`, `kanagawa`, `rosepine`
+
+Individual color options: `border`, `title`, `key`, `value`, and `art_1` through `art_8` for ASCII art colors.
+
+### Section Toggles
+
+Toggle which items to show in each section:
+
+- Core: `os`, `kernel`, `uptime`, `init`
+- Hardware: `cpu`, `gpu`, `memory`, `storage`, `battery`, `screen`
+- Userspace: `packages`, `terminal`, `shell`, `wm`, `ui`, `editor`, `terminal_font`
+
+The default config can be found in `src/config.toml`.
 
 ## Contributing
 
-I currently won't accept PR's as this defeats the whole point of the project (sorry!).
+I currently won't accept PRs as this defeats the whole point of the project (sorry!).
 
 ## Installation
 
-To install Slowfetch, pull the source and use the following command from the root of the project.
+To install Slowfetch, pull the source and use the following command from the root of the project:
 
-`cargo install --path .`
+```
+cargo install --path .
+```
 
-## Example of the program and its dynamic width/height layout
+## Example
 
-![Slowfetch Screenshot](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch0-2-5.png))
+![Slowfetch Screenshot](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch/screenshot1.png)
+
+![Slowfetch TUI config](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch/screenshot2.png)
+
+![Slowfetch image display](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch/screenshot3.png)
