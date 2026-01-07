@@ -156,6 +156,82 @@ pub enum NerdFontSetting {
     ForceOff,
 }
 
+// Box corner style - rounded or square
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum BoxStyle {
+    #[default]
+    Rounded,
+    Square,
+}
+
+impl BoxStyle {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "rounded" => Some(Self::Rounded),
+            "square" => Some(Self::Square),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Rounded => "rounded",
+            Self::Square => "square",
+        }
+    }
+
+    /// Get the box drawing characters for this style (for solid/dotted lines)
+    pub fn corners(&self) -> (&'static str, &'static str, &'static str, &'static str) {
+        match self {
+            Self::Rounded => ("╭", "╮", "╰", "╯"),
+            Self::Square => ("┌", "┐", "└", "┘"),
+        }
+    }
+
+    /// Get the box drawing characters for double lines
+    pub fn corners_double(&self) -> (&'static str, &'static str, &'static str, &'static str) {
+        // Double lines always use square-style corners (rounded doesn't exist for double lines)
+        ("╔", "╗", "╚", "╝")
+    }
+}
+
+// Border line style - solid, dotted, or double
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum BorderLineStyle {
+    #[default]
+    Solid,
+    Dotted,
+    Double,
+}
+
+impl BorderLineStyle {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "solid" => Some(Self::Solid),
+            "dotted" => Some(Self::Dotted),
+            "double" => Some(Self::Double),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Solid => "solid",
+            Self::Dotted => "dotted",
+            Self::Double => "double",
+        }
+    }
+
+    /// Get the horizontal and vertical line characters for this style
+    pub fn lines(&self) -> (&'static str, &'static str) {
+        match self {
+            Self::Solid => ("─", "│"),
+            Self::Dotted => ("╌", "┊"),
+            Self::Double => ("═", "║"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub os_art: OsArtSetting,
@@ -164,6 +240,8 @@ pub struct Config {
     pub image: bool,
     pub image_path: Option<String>,
     pub nerd_fonts: NerdFontSetting,
+    pub box_style: BoxStyle,
+    pub border_line_style: BorderLineStyle,
     pub core: CoreToggles,
     pub hardware: HardwareToggles,
     pub userspace: UserspaceToggles,
@@ -178,6 +256,8 @@ impl Default for Config {
             image: false,
             image_path: None,
             nerd_fonts: NerdFontSetting::Auto,
+            box_style: BoxStyle::default(),
+            border_line_style: BorderLineStyle::default(),
             core: CoreToggles::default(),
             hardware: HardwareToggles::default(),
             userspace: UserspaceToggles::default(),
@@ -510,6 +590,36 @@ fn parse_config(content: &str) -> Config {
                 config.nerd_fonts = NerdFontSetting::ForceOn;
             } else if value == b"false" {
                 config.nerd_fonts = NerdFontSetting::ForceOff;
+            }
+        }
+
+        // Parse box_style setting (rounded or square corners)
+        if key == b"box_style" {
+            if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                if let Ok(style_name) = std::str::from_utf8(&value[1..value.len() - 1]) {
+                    if let Some(style) = BoxStyle::from_str(style_name) {
+                        config.box_style = style;
+                    }
+                }
+            } else if let Ok(style_name) = std::str::from_utf8(value) {
+                if let Some(style) = BoxStyle::from_str(style_name) {
+                    config.box_style = style;
+                }
+            }
+        }
+
+        // Parse border_line_style setting (solid, dotted, or double lines)
+        if key == b"border_line_style" {
+            if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                if let Ok(style_name) = std::str::from_utf8(&value[1..value.len() - 1]) {
+                    if let Some(style) = BorderLineStyle::from_str(style_name) {
+                        config.border_line_style = style;
+                    }
+                }
+            } else if let Ok(style_name) = std::str::from_utf8(value) {
+                if let Some(style) = BorderLineStyle::from_str(style_name) {
+                    config.border_line_style = style;
+                }
             }
         }
 

@@ -1,7 +1,7 @@
 // Rendering functions for prettyconfig TUI
 // All draw_* functions and ANSI parsing utilities
 
-use crate::configloader::{NerdFontSetting, OsArtSetting};
+use crate::configloader::{BorderLineStyle, BoxStyle, NerdFontSetting, OsArtSetting};
 use crate::prettyconfig::helpers::theme_name;
 use crate::prettyconfig::navigation::{App, FocusArea};
 
@@ -10,6 +10,21 @@ fn nerd_font_name(setting: NerdFontSetting) -> &'static str {
         NerdFontSetting::Auto => "Auto",
         NerdFontSetting::ForceOn => "On",
         NerdFontSetting::ForceOff => "Off",
+    }
+}
+
+fn box_style_name(style: BoxStyle) -> &'static str {
+    match style {
+        BoxStyle::Rounded => "Rounded",
+        BoxStyle::Square => "Square",
+    }
+}
+
+fn border_line_style_name(style: BorderLineStyle) -> &'static str {
+    match style {
+        BorderLineStyle::Solid => "Solid",
+        BorderLineStyle::Dotted => "Dotted",
+        BorderLineStyle::Double => "Double",
     }
 }
 
@@ -28,7 +43,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
     let main_chunks = Layout::vertical([
-        Constraint::Length(18),
+        Constraint::Length(20),
         Constraint::Min(10),
         Constraint::Length(1),
     ])
@@ -70,7 +85,7 @@ fn draw_settings_panel(
     };
 
     let rows = Layout::vertical([
-        Constraint::Length(6),
+        Constraint::Length(8),
         Constraint::Length(1),
         Constraint::Min(9),
     ])
@@ -140,6 +155,24 @@ fn draw_general_box(
         Span::styled(format!("◀ {:^12} ▶", nerd_font_name(app.nerd_fonts)), style.fg(value_color)),
     ]);
     frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 1, height: 1, ..inner });
+
+    // Box Style (index 2)
+    let selected = focused && app.index == 2;
+    let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
+    let line = Line::from(vec![
+        Span::styled("Box Style:   ", style.fg(key_color)),
+        Span::styled(format!("◀ {:^12} ▶", box_style_name(app.box_style)), style.fg(value_color)),
+    ]);
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 2, height: 1, ..inner });
+
+    // Border Lines (index 3)
+    let selected = focused && app.index == 3;
+    let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
+    let line = Line::from(vec![
+        Span::styled("Border Lines:", style.fg(key_color)),
+        Span::styled(format!("◀ {:^12} ▶", border_line_style_name(app.border_line_style)), style.fg(value_color)),
+    ]);
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 3, height: 1, ..inner });
 }
 
 /// Draw the art configuration box (OS Art, Custom Art, Image, Image Path)

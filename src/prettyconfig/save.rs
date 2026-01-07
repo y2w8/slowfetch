@@ -2,7 +2,7 @@
 // Generates TOML content matching the original config.toml format
 
 use crate::configloader::{
-    CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
+    BorderLineStyle, BoxStyle, CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -54,6 +54,8 @@ pub fn generate_config_toml(
     custom_art: &Option<String>,
     image: bool,
     image_path: &Option<String>,
+    box_style: BoxStyle,
+    border_line_style: BorderLineStyle,
     core: &CoreToggles,
     hardware: &HardwareToggles,
     userspace: &UserspaceToggles,
@@ -100,6 +102,19 @@ pub fn generate_config_toml(
         NerdFontSetting::Auto => output.push_str("# nerd_fonts = true\n"),
         NerdFontSetting::ForceOn => output.push_str("nerd_fonts = true\n"),
         NerdFontSetting::ForceOff => output.push_str("nerd_fonts = false\n"),
+    }
+
+    output.push_str("\n## Box corner style: \"rounded\" (default) or \"square\"\n");
+    match box_style {
+        BoxStyle::Rounded => output.push_str("# box_style = \"rounded\"\n"),
+        BoxStyle::Square => output.push_str("box_style = \"square\"\n"),
+    }
+
+    output.push_str("\n## Border line style: \"solid\" (default), \"dotted\", or \"double\"\n");
+    match border_line_style {
+        BorderLineStyle::Solid => output.push_str("# border_line_style = \"solid\"\n"),
+        BorderLineStyle::Dotted => output.push_str("border_line_style = \"dotted\"\n"),
+        BorderLineStyle::Double => output.push_str("border_line_style = \"double\"\n"),
     }
 
     // colorssection
@@ -180,6 +195,8 @@ pub fn save_config(
     custom_art: &Option<String>,
     image: bool,
     image_path: &Option<String>,
+    box_style: BoxStyle,
+    border_line_style: BorderLineStyle,
     core: &CoreToggles,
     hardware: &HardwareToggles,
     userspace: &UserspaceToggles,
@@ -191,7 +208,7 @@ pub fn save_config(
         fs::create_dir_all(parent).map_err(|e| format!("Could not create config directory: {}", e))?;
     }
 
-    let content = generate_config_toml(theme, nerd_fonts, os_art, custom_art, image, image_path, core, hardware, userspace);
+    let content = generate_config_toml(theme, nerd_fonts, os_art, custom_art, image, image_path, box_style, border_line_style, core, hardware, userspace);
 
     fs::write(&path, content).map_err(|e| format!("Could not write config file: {}", e))?;
 

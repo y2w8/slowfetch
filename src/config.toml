@@ -19,6 +19,12 @@
 ## Set to true to always use nerd font icons, false to never use them
 # nerd_fonts = true
 
+## Box corner style: "rounded" (default) or "square"
+# box_style = "rounded"
+
+## Border line style: "solid" (default), "dotted", or "double"
+# border_line_style = "solid"
+
 [colors]
 ## Theme preset - sets border, title, key, and value colors.
 ## Available: "default" or "tty", "dracula", "catppuccin", "nord", "gruvbox", "eldritch", "kanagawa"

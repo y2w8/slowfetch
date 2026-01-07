@@ -2,7 +2,7 @@
 // Contains FocusArea enum, App struct, and navigation methods
 
 use crate::configloader::{
-    Config, CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
+    BorderLineStyle, BoxStyle, Config, CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
 };
 use crate::dostuff;
 use crate::modules::asciimodule;
@@ -46,7 +46,7 @@ impl FocusArea {
 
     pub fn max_index(self) -> usize {
         match self {
-            Self::General => 1,   // Theme, Nerd Fonts
+            Self::General => 3,   // Theme, Nerd Fonts, Box Style, Border Lines
             Self::Art => 3,       // OS Art, Custom Art, Image Enabled, Image Path
             Self::Core => 3,      // OS, Kernel, Uptime, Init
             Self::Hardware => 5,  // CPU, GPU, Memory, Storage, Battery, Screen
@@ -64,6 +64,8 @@ pub struct App {
     pub custom_art: Option<String>,
     pub image: bool,
     pub image_path: Option<String>,
+    pub box_style: BoxStyle,
+    pub border_line_style: BorderLineStyle,
     pub core: CoreToggles,
     pub hardware: HardwareToggles,
     pub userspace: UserspaceToggles,
@@ -126,6 +128,8 @@ impl App {
             custom_art: config.custom_art.clone(),
             image: config.image,
             image_path: config.image_path.clone(),
+            box_style: config.box_style,
+            border_line_style: config.border_line_style,
             core: config.core.clone(),
             hardware: config.hardware.clone(),
             userspace: config.userspace.clone(),
@@ -256,6 +260,33 @@ impl App {
         self.reload_sections_for_nerd_fonts();
     }
 
+    pub fn cycle_box_style_next(&mut self) {
+        self.box_style = match self.box_style {
+            BoxStyle::Rounded => BoxStyle::Square,
+            BoxStyle::Square => BoxStyle::Rounded,
+        };
+    }
+
+    pub fn cycle_box_style_prev(&mut self) {
+        self.cycle_box_style_next(); // Only 2 options, so prev == next
+    }
+
+    pub fn cycle_border_line_style_next(&mut self) {
+        self.border_line_style = match self.border_line_style {
+            BorderLineStyle::Solid => BorderLineStyle::Dotted,
+            BorderLineStyle::Dotted => BorderLineStyle::Double,
+            BorderLineStyle::Double => BorderLineStyle::Solid,
+        };
+    }
+
+    pub fn cycle_border_line_style_prev(&mut self) {
+        self.border_line_style = match self.border_line_style {
+            BorderLineStyle::Solid => BorderLineStyle::Double,
+            BorderLineStyle::Dotted => BorderLineStyle::Solid,
+            BorderLineStyle::Double => BorderLineStyle::Dotted,
+        };
+    }
+
     fn reload_sections_for_nerd_fonts(&mut self) {
         // Set the nerd font override before reloading sections
         crate::helpers::set_nerd_font_override(match self.nerd_fonts {
@@ -272,6 +303,8 @@ impl App {
             image: self.image,
             image_path: self.image_path.clone(),
             nerd_fonts: self.nerd_fonts,
+            box_style: self.box_style,
+            border_line_style: self.border_line_style,
             core: CoreToggles { os: true, kernel: true, uptime: true, init: true },
             hardware: HardwareToggles {
                 cpu: true, gpu: true, memory: true, storage: true, battery: true, screen: true,

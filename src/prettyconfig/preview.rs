@@ -39,6 +39,9 @@ pub fn update_preview(app: &mut App) {
     };
     colorcontrol::set_preview_colors(Some(preview_colors));
 
+    // Set preview box styles
+    renderer::set_preview_box_styles(Some(app.box_style), Some(app.border_line_style));
+
     // Filter sections based on toggles
     let core = filter_core_section(&app.cached_sections.0, &app.core);
     let hardware = filter_hardware_section(&app.cached_sections.1, &app.hardware);

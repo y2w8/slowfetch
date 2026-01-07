@@ -83,6 +83,14 @@ impl App {
                     self.cycle_nerd_fonts_prev();
                     self.update_preview();
                 }
+                2 => {
+                    self.cycle_box_style_prev();
+                    self.update_preview();
+                }
+                3 => {
+                    self.cycle_border_line_style_prev();
+                    self.update_preview();
+                }
                 _ => {}
             },
             FocusArea::Art => match self.index {
@@ -107,6 +115,14 @@ impl App {
                     self.cycle_nerd_fonts_next();
                     self.update_preview();
                 }
+                2 => {
+                    self.cycle_box_style_next();
+                    self.update_preview();
+                }
+                3 => {
+                    self.cycle_border_line_style_next();
+                    self.update_preview();
+                }
                 _ => {}
             },
             FocusArea::Art => match self.index {
@@ -129,6 +145,14 @@ impl App {
                 }
                 1 => {
                     self.cycle_nerd_fonts_next();
+                    self.update_preview();
+                }
+                2 => {
+                    self.cycle_box_style_next();
+                    self.update_preview();
+                }
+                3 => {
+                    self.cycle_border_line_style_next();
                     self.update_preview();
                 }
                 _ => {}
@@ -192,6 +216,8 @@ impl App {
             &self.custom_art,
             self.image,
             &self.image_path,
+            self.box_style,
+            self.border_line_style,
             &self.core,
             &self.hardware,
             &self.userspace,

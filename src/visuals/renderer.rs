@@ -1,16 +1,70 @@
 // slowfetch rendering system
 
+use crate::configloader::{BorderLineStyle, BoxStyle};
 use crate::visuals::colorcontrol::{color_border, color_key, color_title, color_value};
 use crate::visuals::terminalsize::get_terminal_size;
 use memchr::memchr;
+use std::sync::{OnceLock, RwLock};
 
-// Box drawing characters (as &str for easier concatenation)
-const BOX_TOP_LEFT: &str = "╭";
-const BOX_TOP_RIGHT: &str = "╮";
-const BOX_BOTTOM_LEFT: &str = "╰";
-const BOX_BOTTOM_RIGHT: &str = "╯";
-const BOX_HORIZONTAL: &str = "─";
-const BOX_VERTICAL: &str = "│";
+// Global box style config, initialized once from config file
+static BOX_STYLE: OnceLock<BoxStyle> = OnceLock::new();
+static BORDER_LINE_STYLE: OnceLock<BorderLineStyle> = OnceLock::new();
+
+// Override box styles for preview mode
+static PREVIEW_BOX_STYLE: RwLock<Option<BoxStyle>> = RwLock::new(None);
+static PREVIEW_BORDER_LINE_STYLE: RwLock<Option<BorderLineStyle>> = RwLock::new(None);
+
+// Initialize box styles from config - call this once at startup
+pub fn init_box_styles(box_style: BoxStyle, border_line_style: BorderLineStyle) {
+    let _ = BOX_STYLE.set(box_style);
+    let _ = BORDER_LINE_STYLE.set(border_line_style);
+}
+
+// Set preview box styles (for TUI config preview)
+pub fn set_preview_box_styles(box_style: Option<BoxStyle>, border_line_style: Option<BorderLineStyle>) {
+    if let Ok(mut preview) = PREVIEW_BOX_STYLE.write() {
+        *preview = box_style;
+    }
+    if let Ok(mut preview) = PREVIEW_BORDER_LINE_STYLE.write() {
+        *preview = border_line_style;
+    }
+}
+
+// Get the current box style (preview overrides base)
+fn get_box_style() -> BoxStyle {
+    if let Ok(preview) = PREVIEW_BOX_STYLE.read() {
+        if let Some(style) = *preview {
+            return style;
+        }
+    }
+    *BOX_STYLE.get_or_init(BoxStyle::default)
+}
+
+// Get the current border line style (preview overrides base)
+fn get_border_line_style() -> BorderLineStyle {
+    if let Ok(preview) = PREVIEW_BORDER_LINE_STYLE.read() {
+        if let Some(style) = *preview {
+            return style;
+        }
+    }
+    *BORDER_LINE_STYLE.get_or_init(BorderLineStyle::default)
+}
+
+// Get box drawing characters based on current style configuration
+fn get_box_chars() -> (&'static str, &'static str, &'static str, &'static str, &'static str, &'static str) {
+    let box_style = get_box_style();
+    let border_line_style = get_border_line_style();
+
+    // Use double-line corners when double lines are selected
+    let (top_left, top_right, bottom_left, bottom_right) = if border_line_style == BorderLineStyle::Double {
+        box_style.corners_double()
+    } else {
+        box_style.corners()
+    };
+    let (horizontal, vertical) = border_line_style.lines();
+
+    (top_left, top_right, bottom_left, bottom_right, horizontal, vertical)
+}
 
 // Count visible characters in a byte slice (no ANSI sequences)
 // Counts ASCII bytes and UTF-8 start bytes (skips continuation bytes)
@@ -69,7 +123,7 @@ impl Section {
     }
 }
 
-// uild a bordered box around content lines.
+// Build a bordered box around content lines.
 //
 // `lines` - Content lines to display inside the box
 // `title` - Optional title to display centered in the top border
@@ -85,7 +139,10 @@ pub fn build_box(
     target_height: Option<usize>,
     center_content: bool,
 ) -> Vec<String> {
-    // --- step 1: Calculate dimensions ---
+    // --- step 1: Get box drawing characters based on current style ---
+    let (box_top_left, box_top_right, box_bottom_left, box_bottom_right, box_horizontal, box_vertical) = get_box_chars();
+
+    // --- step 2: Calculate dimensions ---
 
     // Pre-compute visible lengths for all lines (ignoring ANSI codes)
     let line_visible_lengths: Vec<usize> = lines.iter().map(|line| visible_len(line)).collect();
@@ -105,7 +162,7 @@ pub fn build_box(
     let minimum_height = content_line_count + 2;
     let box_total_height = target_height.unwrap_or(minimum_height).max(minimum_height);
 
-    // --- step 2: Calculate vertical padding ---
+    // --- step 3: Calculate vertical padding ---
     // Extra vertical space is split between top and bottom
     let total_vertical_padding = box_total_height.saturating_sub(minimum_height);
     let top_padding_rows = total_vertical_padding / 2;
@@ -113,13 +170,13 @@ pub fn build_box(
 
     let mut result = Vec::with_capacity(box_total_height);
 
-    // --- stepo 3: Pre-compute reusable colored border pieces ---
-    let colored_vertical_border = color_border(BOX_VERTICAL);
-    let colored_horizontal_line = color_border(&BOX_HORIZONTAL.repeat(box_inner_width + 2));
+    // --- step 4: Pre-compute reusable colored border pieces ---
+    let colored_vertical_border = color_border(box_vertical);
+    let colored_horizontal_line = color_border(&box_horizontal.repeat(box_inner_width + 2));
     let inner_spaces = " ".repeat(box_inner_width + 2);
     let empty_padding_row = format!("{colored_vertical_border}{inner_spaces}{colored_vertical_border}");
 
-    // --- step 4: Build top border ---
+    // --- step 5: Build top border ---
     // Format: ╭──── Title ────╮  or  ╭────────────╮
     let top_border = if let Some(title_text) = title {
         // Calculate dashes on each side of the title
@@ -128,29 +185,29 @@ pub fn build_box(
         let right_dash_count = total_dash_count - left_dash_count;
         format!(
             "{}{} {} {}{}",
-            color_border(BOX_TOP_LEFT),
-            color_border(&BOX_HORIZONTAL.repeat(left_dash_count)),
+            color_border(box_top_left),
+            color_border(&box_horizontal.repeat(left_dash_count)),
             color_title(title_text),
-            color_border(&BOX_HORIZONTAL.repeat(right_dash_count)),
-            color_border(BOX_TOP_RIGHT)
+            color_border(&box_horizontal.repeat(right_dash_count)),
+            color_border(box_top_right)
         )
     } else {
         // No title - just a solid horizontal line
         format!(
             "{}{}{}",
-            color_border(BOX_TOP_LEFT),
+            color_border(box_top_left),
             colored_horizontal_line,
-            color_border(BOX_TOP_RIGHT)
+            color_border(box_top_right)
         )
     };
     result.push(top_border);
 
-    // --- step 5: Add top padding rows ---
+    // --- step 6: Add top padding rows ---
     for _ in 0..top_padding_rows {
         result.push(empty_padding_row.clone());
     }
 
-    // ---step 6: Build content rows ---
+    // --- step 7: Build content rows ---
     // Format: │ [left_pad] content [right_pad] │
     for (line_content, &line_visible_width) in lines.iter().zip(line_visible_lengths.iter()) {
         let total_padding = box_inner_width.saturating_sub(line_visible_width);
@@ -175,17 +232,17 @@ pub fn build_box(
         result.push(content_row);
     }
 
-    // ---step 7: Add bottom padding rows ---
+    // --- step 8: Add bottom padding rows ---
     for _ in 0..bottom_padding_rows {
         result.push(empty_padding_row.clone());
     }
 
-    // === PHASE 8: Build bottom border ===
+    // --- step 9: Build bottom border ---
     let bottom_border = format!(
         "{}{}{}",
-        color_border(BOX_BOTTOM_LEFT),
+        color_border(box_bottom_left),
         colored_horizontal_line,
-        color_border(BOX_BOTTOM_RIGHT)
+        color_border(box_bottom_right)
     );
     result.push(bottom_border);
 

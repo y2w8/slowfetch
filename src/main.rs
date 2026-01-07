@@ -60,9 +60,10 @@ fn main() {
         cache::set_force_refresh(true);
     }
 
-    // Load config first and initialize colors before spawning threads
+    // Load config first and initialize colors/styles before spawning threads
     let config = configloader::load_config();
     visuals::colorcontrol::init_colors(config.colors.clone());
+    visuals::renderer::init_box_styles(config.box_style, config.border_line_style);
 
     // Set nerd font override from config
     helpers::set_nerd_font_override(match config.nerd_fonts {

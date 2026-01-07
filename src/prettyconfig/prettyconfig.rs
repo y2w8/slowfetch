@@ -11,12 +11,13 @@ use std::io;
 
 use crate::prettyconfig::navigation::App;
 use crate::prettyconfig::render::draw;
-use crate::visuals::colorcontrol;
+use crate::visuals::{colorcontrol, renderer};
 
 // Run the prettyconfig TUI application
 pub fn run() -> io::Result<()> {
     let config = crate::configloader::load_config();
     colorcontrol::init_colors(config.colors.clone());
+    renderer::init_box_styles(config.box_style, config.border_line_style);
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
