@@ -65,8 +65,8 @@ cargo install --path .
 
 ## Example
 
-![Slowfetch Screenshot](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch/screenshot1.png)
+![Slowfetch Screenshot](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/screenshot1.png)
 
-![Slowfetch TUI config](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch/screenshot2.png)
+![Slowfetch TUI config](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/screenshot2.png)
 
-![Slowfetch image display](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/slowfetch/screenshot3.png)
+![Slowfetch image display](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/screenshot3.png)
