@@ -63,7 +63,7 @@ To install Slowfetch, pull the source and use the following command from the roo
 cargo install --path .
 ```
 
-## Example
+## Screenshots
 
 ![Slowfetch Screenshot](https://raw.githubusercontent.com/tuibird/Slowfetch/refs/heads/master/screenshot1.png)
 
