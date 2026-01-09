@@ -47,39 +47,91 @@ impl EscapeCode {
     #[inline]
     fn from_rgb(r: u8, g: u8, b: u8) -> Self {
         let mut buf = [0u8; 24];
-        let s = format!("\x1b[38;2;{r};{g};{b}m");
-        let bytes = s.as_bytes();
-        buf[..bytes.len()].copy_from_slice(bytes);
-        Self { buf, len: bytes.len() as u8 }
+        let mut pos = 0;
+
+        // "\x1b[38;2;"
+        buf[pos..pos + 7].copy_from_slice(b"\x1b[38;2;");
+        pos += 7;
+
+        // Write r
+        pos += write_u8(&mut buf[pos..], r);
+        buf[pos] = b';';
+        pos += 1;
+
+        // Write g
+        pos += write_u8(&mut buf[pos..], g);
+        buf[pos] = b';';
+        pos += 1;
+
+        // Write b
+        pos += write_u8(&mut buf[pos..], b);
+        buf[pos] = b'm';
+        pos += 1;
+
+        Self { buf, len: pos as u8 }
     }
 
     #[inline]
     fn from_rgb_bold(r: u8, g: u8, b: u8) -> Self {
         let mut buf = [0u8; 24];
-        let s = format!("\x1b[1;38;2;{r};{g};{b}m");
-        let bytes = s.as_bytes();
-        buf[..bytes.len()].copy_from_slice(bytes);
-        Self { buf, len: bytes.len() as u8 }
+        let mut pos = 0;
+
+        // "\x1b[1;38;2;"
+        buf[pos..pos + 9].copy_from_slice(b"\x1b[1;38;2;");
+        pos += 9;
+
+        // Write r
+        pos += write_u8(&mut buf[pos..], r);
+        buf[pos] = b';';
+        pos += 1;
+
+        // Write g
+        pos += write_u8(&mut buf[pos..], g);
+        buf[pos] = b';';
+        pos += 1;
+
+        // Write b
+        pos += write_u8(&mut buf[pos..], b);
+        buf[pos] = b'm';
+        pos += 1;
+
+        Self { buf, len: pos as u8 }
     }
 
     #[inline]
     fn from_ansi(c: AnsiColor) -> Self {
         let mut buf = [0u8; 24];
+        let mut pos = 0;
         let code = c.fg_code();
-        let s = format!("\x1b[{code}m");
-        let bytes = s.as_bytes();
-        buf[..bytes.len()].copy_from_slice(bytes);
-        Self { buf, len: bytes.len() as u8 }
+
+        // "\x1b["
+        buf[pos..pos + 2].copy_from_slice(b"\x1b[");
+        pos += 2;
+
+        // Write ANSI code
+        pos += write_u8(&mut buf[pos..], code);
+        buf[pos] = b'm';
+        pos += 1;
+
+        Self { buf, len: pos as u8 }
     }
 
     #[inline]
     fn from_ansi_bold(c: AnsiColor) -> Self {
         let mut buf = [0u8; 24];
+        let mut pos = 0;
         let code = c.fg_code();
-        let s = format!("\x1b[1;{code}m");
-        let bytes = s.as_bytes();
-        buf[..bytes.len()].copy_from_slice(bytes);
-        Self { buf, len: bytes.len() as u8 }
+
+        // "\x1b[1;"
+        buf[pos..pos + 4].copy_from_slice(b"\x1b[1;");
+        pos += 4;
+
+        // Write ANSI code
+        pos += write_u8(&mut buf[pos..], code);
+        buf[pos] = b'm';
+        pos += 1;
+
+        Self { buf, len: pos as u8 }
     }
 
     #[inline]
@@ -87,6 +139,33 @@ impl EscapeCode {
         // SAFETY: We only write valid ASCII escape sequences
         unsafe { std::str::from_utf8_unchecked(&self.buf[..self.len as usize]) }
     }
+}
+
+// Helper function to write a u8 as ASCII decimal digits to a buffer
+// Returns the number of bytes written
+#[inline]
+fn write_u8(buf: &mut [u8], mut n: u8) -> usize {
+    if n == 0 {
+        buf[0] = b'0';
+        return 1;
+    }
+
+    // u8 max is 255, so at most 3 digits
+    let mut digits = [0u8; 3];
+    let mut count = 0;
+
+    while n > 0 {
+        digits[count] = b'0' + (n % 10);
+        n /= 10;
+        count += 1;
+    }
+
+    // Reverse digits into output buffer (they were generated in reverse order)
+    for i in 0..count {
+        buf[i] = digits[count - 1 - i];
+    }
+
+    count
 }
 
 // Standard ANSI 16-color palette (0-15)
