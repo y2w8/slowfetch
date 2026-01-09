@@ -49,8 +49,8 @@ pub fn write_cache(key: &str, value: &str) -> Option<()> {
 
 // Read cached GPU info in new format (igpu=/dgpu=)
 // Returns None if cache doesn't exist, needs refresh, or is in old format (triggers re-detection)
-pub fn get_cached_gpu_info() -> Option<crate::modules::hardwaremodules::GpuInfo> {
-    use crate::modules::hardwaremodules::GpuInfo;
+pub fn get_cached_gpu_info() -> Option<crate::modules::gpumodule::GpuInfo> {
+    use crate::modules::gpumodule::GpuInfo;
 
     if should_refresh() {
         return None;
@@ -87,7 +87,7 @@ pub fn get_cached_gpu_info() -> Option<crate::modules::hardwaremodules::GpuInfo>
 }
 
 // Cache GPU info in new format (igpu=/dgpu=)
-pub fn cache_gpu_info(info: &crate::modules::hardwaremodules::GpuInfo) {
+pub fn cache_gpu_info(info: &crate::modules::gpumodule::GpuInfo) {
     let mut content = String::new();
 
     if let Some(ref igpu) = info.integrated {

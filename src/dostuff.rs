@@ -1,70 +1,9 @@
 // Section loading logic for Slowfetch
 
-use crate::configloader::{Config, GpuDisplayMode};
-use crate::modules::hardwaremodules::GpuInfo;
+use crate::configloader::Config;
 use crate::modules;
 use crate::visuals::renderer::Section;
 use std::thread;
-
-// Format GPU display based on GpuInfo and display mode configuration
-// Returns a Vec of (key, value) pairs for rendering
-fn format_gpu_display(info: &GpuInfo, mode: GpuDisplayMode) -> Vec<(String, String)> {
-    match mode {
-        GpuDisplayMode::Auto => {
-            // Show dGPU if present, else iGPU
-            if let Some(ref dgpu) = info.discrete {
-                vec![("GPU".to_string(), dgpu.clone())]
-            } else if let Some(ref igpu) = info.integrated {
-                vec![("GPU".to_string(), igpu.clone())]
-            } else {
-                vec![("GPU".to_string(), "unknown".to_string())]
-            }
-        }
-        GpuDisplayMode::Integrated => {
-            // Show only iGPU
-            if let Some(ref igpu) = info.integrated {
-                vec![("GPU".to_string(), igpu.clone())]
-            } else {
-                vec![] // Don't show anything if no iGPU
-            }
-        }
-        GpuDisplayMode::Discrete => {
-            // Show only dGPU
-            if let Some(ref dgpu) = info.discrete {
-                vec![("GPU".to_string(), dgpu.clone())]
-            } else {
-                vec![] // Don't show anything if no dGPU
-            }
-        }
-        GpuDisplayMode::Both => {
-            // Show both GPUs in tree-style format (like screen module)
-            let mut result = Vec::new();
-            let has_both = info.discrete.is_some() && info.integrated.is_some();
-            let has_any = info.discrete.is_some() || info.integrated.is_some();
-
-            if !has_any {
-                return vec![("GPU".to_string(), "unknown".to_string())];
-            }
-
-            // Header line
-            result.push(("GPUs".to_string(), String::new()));
-
-            // Show discrete GPU first (if present)
-            if let Some(ref dgpu) = info.discrete {
-                let branch = if has_both { "├─" } else { "╰─" };
-                result.push((branch.to_string(), dgpu.clone()));
-            }
-
-            // Show integrated GPU second (if present)
-            if let Some(ref igpu) = info.integrated {
-                let branch = "╰─";
-                result.push((branch.to_string(), igpu.clone()));
-            }
-
-            result
-        }
-    }
-}
 
 // Load all sections based on config toggles.
 // Spawns threads for slow I/O operations (GPU, storage, packages, shell, font, screen)
@@ -74,7 +13,7 @@ pub fn load_sections(config: &Config) -> (Section, Section, Section) {
     // Spawn threads for slow I/O operations (subprocesses) if enabled.
     // These may run external commands like vulkaninfo, df, shell --version, etc.
     let gpu_handler = if config.hardware.gpu {
-        Some(thread::spawn(modules::hardwaremodules::gpu))
+        Some(thread::spawn(modules::gpumodule::gpu))
     } else { None };
     let storage_handler = if config.hardware.storage {
         Some(thread::spawn(modules::hardwaremodules::storage))
@@ -118,9 +57,9 @@ pub fn load_sections(config: &Config) -> (Section, Section, Section) {
     if let Some(v) = cpu { hardware_lines.push(("CPU".to_string(), v)); }
     if let Some(h) = gpu_handler {
         // Join the GPU thread and get the result.
-        let gpu_info = h.join().unwrap_or_else(|_| GpuInfo::new());
+        let gpu_info = h.join().unwrap_or_else(|_| modules::gpumodule::GpuInfo::new());
         // Format GPU display based on configuration
-        let gpu_entries = format_gpu_display(&gpu_info, config.hardware.gpu_display);
+        let gpu_entries = modules::gpumodule::format_gpu_display(&gpu_info, config.hardware.gpu_display);
         hardware_lines.extend(gpu_entries);
     }
     if let Some(v) = memory { hardware_lines.push(("Memory".to_string(), v)); }
