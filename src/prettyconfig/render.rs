@@ -1,7 +1,7 @@
 // Rendering functions for prettyconfig TUI
 // All draw_* functions and ANSI parsing utilities
 
-use crate::configloader::{BorderLineStyle, BoxStyle, NerdFontSetting, OsArtSetting};
+use crate::configloader::{BorderLineStyle, BoxStyle, GpuDisplayMode, NerdFontSetting, OsArtSetting};
 use crate::prettyconfig::helpers::theme_name;
 use crate::prettyconfig::navigation::{App, FocusArea};
 
@@ -25,6 +25,15 @@ fn border_line_style_name(style: BorderLineStyle) -> &'static str {
         BorderLineStyle::Solid => "Solid",
         BorderLineStyle::Dotted => "Dotted",
         BorderLineStyle::Double => "Double",
+    }
+}
+
+fn gpu_display_name(mode: GpuDisplayMode) -> &'static str {
+    match mode {
+        GpuDisplayMode::Auto => "Auto",
+        GpuDisplayMode::Integrated => "iGPU",
+        GpuDisplayMode::Discrete => "dGPU",
+        GpuDisplayMode::Both => "Both",
     }
 }
 
@@ -173,6 +182,15 @@ fn draw_general_box(
         Span::styled(format!("◀ {:^12} ▶", border_line_style_name(app.border_line_style)), style.fg(value_color)),
     ]);
     frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 3, height: 1, ..inner });
+
+    // GPU Display (index 4)
+    let selected = focused && app.index == 4;
+    let style = if selected { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default() };
+    let line = Line::from(vec![
+        Span::styled("GPU Display: ", style.fg(key_color)),
+        Span::styled(format!("◀ {:^12} ▶", gpu_display_name(app.gpu_display)), style.fg(value_color)),
+    ]);
+    frame.render_widget(Paragraph::new(line), Rect { y: inner.y + 4, height: 1, ..inner });
 }
 
 /// Draw the art configuration box (OS Art, Custom Art, Image, Image Path)

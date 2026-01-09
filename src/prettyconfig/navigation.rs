@@ -2,7 +2,7 @@
 // Contains FocusArea enum, App struct, and navigation methods
 
 use crate::configloader::{
-    BorderLineStyle, BoxStyle, Config, CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
+    BorderLineStyle, BoxStyle, Config, CoreToggles, GpuDisplayMode, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
 };
 use crate::dostuff;
 use crate::modules::asciimodule;
@@ -46,7 +46,7 @@ impl FocusArea {
 
     pub fn max_index(self) -> usize {
         match self {
-            Self::General => 3,   // Theme, Nerd Fonts, Box Style, Border Lines
+            Self::General => 4,   // Theme, Nerd Fonts, Box Style, Border Lines, GPU Display
             Self::Art => 3,       // OS Art, Custom Art, Image Enabled, Image Path
             Self::Core => 3,      // OS, Kernel, Uptime, Init
             Self::Hardware => 5,  // CPU, GPU, Memory, Storage, Battery, Screen
@@ -66,6 +66,7 @@ pub struct App {
     pub image_path: Option<String>,
     pub box_style: BoxStyle,
     pub border_line_style: BorderLineStyle,
+    pub gpu_display: GpuDisplayMode,
     pub core: CoreToggles,
     pub hardware: HardwareToggles,
     pub userspace: UserspaceToggles,
@@ -114,7 +115,7 @@ impl App {
         let mut full_config = config.clone();
         full_config.core = CoreToggles { os: true, kernel: true, uptime: true, init: true };
         full_config.hardware = HardwareToggles {
-            cpu: true, gpu: true, memory: true, storage: true, battery: true, screen: true,
+            cpu: true, gpu: true, gpu_display: crate::configloader::GpuDisplayMode::Auto, memory: true, storage: true, battery: true, screen: true,
         };
         full_config.userspace = UserspaceToggles {
             packages: true, terminal: true, shell: true, wm: true, ui: true, editor: true, terminal_font: true,
@@ -130,6 +131,7 @@ impl App {
             image_path: config.image_path.clone(),
             box_style: config.box_style,
             border_line_style: config.border_line_style,
+            gpu_display: config.hardware.gpu_display,
             core: config.core.clone(),
             hardware: config.hardware.clone(),
             userspace: config.userspace.clone(),
@@ -287,6 +289,24 @@ impl App {
         };
     }
 
+    pub fn cycle_gpu_display_next(&mut self) {
+        self.gpu_display = match self.gpu_display {
+            GpuDisplayMode::Auto => GpuDisplayMode::Integrated,
+            GpuDisplayMode::Integrated => GpuDisplayMode::Discrete,
+            GpuDisplayMode::Discrete => GpuDisplayMode::Both,
+            GpuDisplayMode::Both => GpuDisplayMode::Auto,
+        };
+    }
+
+    pub fn cycle_gpu_display_prev(&mut self) {
+        self.gpu_display = match self.gpu_display {
+            GpuDisplayMode::Auto => GpuDisplayMode::Both,
+            GpuDisplayMode::Integrated => GpuDisplayMode::Auto,
+            GpuDisplayMode::Discrete => GpuDisplayMode::Integrated,
+            GpuDisplayMode::Both => GpuDisplayMode::Discrete,
+        };
+    }
+
     fn reload_sections_for_nerd_fonts(&mut self) {
         // Set the nerd font override before reloading sections
         crate::helpers::set_nerd_font_override(match self.nerd_fonts {
@@ -307,7 +327,7 @@ impl App {
             border_line_style: self.border_line_style,
             core: CoreToggles { os: true, kernel: true, uptime: true, init: true },
             hardware: HardwareToggles {
-                cpu: true, gpu: true, memory: true, storage: true, battery: true, screen: true,
+                cpu: true, gpu: true, gpu_display: crate::configloader::GpuDisplayMode::Auto, memory: true, storage: true, battery: true, screen: true,
             },
             userspace: UserspaceToggles {
                 packages: true, terminal: true, shell: true, wm: true, ui: true, editor: true, terminal_font: true,

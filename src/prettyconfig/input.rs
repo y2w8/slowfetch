@@ -91,6 +91,10 @@ impl App {
                     self.cycle_border_line_style_prev();
                     self.update_preview();
                 }
+                4 => {
+                    self.cycle_gpu_display_prev();
+                    self.update_preview();
+                }
                 _ => {}
             },
             FocusArea::Art => match self.index {
@@ -123,6 +127,10 @@ impl App {
                     self.cycle_border_line_style_next();
                     self.update_preview();
                 }
+                4 => {
+                    self.cycle_gpu_display_next();
+                    self.update_preview();
+                }
                 _ => {}
             },
             FocusArea::Art => match self.index {
@@ -153,6 +161,10 @@ impl App {
                 }
                 3 => {
                     self.cycle_border_line_style_next();
+                    self.update_preview();
+                }
+                4 => {
+                    self.cycle_gpu_display_next();
                     self.update_preview();
                 }
                 _ => {}
@@ -218,6 +230,7 @@ impl App {
             &self.image_path,
             self.box_style,
             self.border_line_style,
+            self.gpu_display,
             &self.core,
             &self.hardware,
             &self.userspace,

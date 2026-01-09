@@ -47,14 +47,62 @@ pub fn write_cache(key: &str, value: &str) -> Option<()> {
     fs::write(path, value).ok()
 }
 
-// Read cached GPU value, or return None to trigger the freshest of fetches.
-pub fn get_cached_gpu() -> Option<String> {
-    read_cache("gpu")
+// Read cached GPU info in new format (igpu=/dgpu=)
+// Returns None if cache doesn't exist, needs refresh, or is in old format (triggers re-detection)
+pub fn get_cached_gpu_info() -> Option<crate::modules::hardwaremodules::GpuInfo> {
+    use crate::modules::hardwaremodules::GpuInfo;
+
+    if should_refresh() {
+        return None;
+    }
+
+    let content = read_cache("gpu")?;
+
+    // Check if this is the new format (contains "igpu=" or "dgpu=")
+    if !content.contains("igpu=") && !content.contains("dgpu=") {
+        // Old format - return None to trigger re-detection
+        return None;
+    }
+
+    // Parse new format
+    let mut info = GpuInfo::new();
+    for line in content.lines() {
+        if let Some(value) = line.strip_prefix("igpu=") {
+            if !value.is_empty() {
+                info.integrated = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("dgpu=") {
+            if !value.is_empty() {
+                info.discrete = Some(value.to_string());
+            }
+        }
+    }
+
+    // Return None if no GPUs were parsed (malformed cache)
+    if info.is_empty() {
+        None
+    } else {
+        Some(info)
+    }
 }
 
-// Cache the GPU value
-pub fn cache_gpu(value: &str) {
-    let _ = write_cache("gpu", value);
+// Cache GPU info in new format (igpu=/dgpu=)
+pub fn cache_gpu_info(info: &crate::modules::hardwaremodules::GpuInfo) {
+    let mut content = String::new();
+
+    if let Some(ref igpu) = info.integrated {
+        content.push_str("igpu=");
+        content.push_str(igpu);
+        content.push('\n');
+    }
+
+    if let Some(ref dgpu) = info.discrete {
+        content.push_str("dgpu=");
+        content.push_str(dgpu);
+        content.push('\n');
+    }
+
+    let _ = write_cache("gpu", &content);
 }
 
 // Read cached OS value, or return None to trigger a fresh fetch.

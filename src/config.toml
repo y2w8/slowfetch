@@ -62,6 +62,12 @@
 ## Note: battery can be set to true on a desktop, will only display if your device is portable.
 # cpu = true
 # gpu = true
+## GPU display mode: "auto" (default), "igpu", "dgpu", or "both"
+## - auto: Shows discrete GPU if present, otherwise integrated GPU
+## - igpu/integrated: Shows only integrated GPU
+## - dgpu/discrete: Shows only discrete GPU
+## - both: Shows both GPUs in tree-style format
+# gpu_display = "auto"
 # memory = true
 # storage = true
 # battery = true

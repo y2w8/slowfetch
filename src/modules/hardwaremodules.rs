@@ -130,12 +130,32 @@ pub fn memory() -> String {
     "unknown".to_string()
 }
 
-// Get the GPU model.
+// GPU information struct - stores both integrated and discrete GPUs
+#[derive(Debug, Clone)]
+pub struct GpuInfo {
+    pub integrated: Option<String>,
+    pub discrete: Option<String>,
+}
+
+impl GpuInfo {
+    pub fn new() -> Self {
+        Self {
+            integrated: None,
+            discrete: None,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.integrated.is_none() && self.discrete.is_none()
+    }
+}
+
+// Get GPU information (both integrated and discrete GPUs).
 // Uses persistent cache to avoid slow subprocess calls on repeated runs.
-// If cache isnt used, it tries vulkaninfo first for speed, then glxinfo, then sysfs + pci.ids, then lspci as final fallback
-pub fn gpu() -> String {
+// Prioritizes sysfs-based detection for speed and accuracy.
+pub fn gpu() -> GpuInfo {
     // Check cache first (unless --refresh was passed)
-    if let Some(cached) = cache::get_cached_gpu() {
+    if let Some(cached) = cache::get_cached_gpu_info() {
         return cached;
     }
 
@@ -143,49 +163,59 @@ pub fn gpu() -> String {
     let result = gpu_fresh();
 
     // Cache the result for next time
-    cache::cache_gpu(&result);
+    cache::cache_gpu_info(&result);
 
     result
 }
 
 // Fetch GPU info fresh (no cache)
-fn gpu_fresh() -> String {
-    // First, try to find a discrete GPU (filter out integrated)
-    // This prioritises dGPU over iGPU when both are present
+// New sysfs-first approach with dual-GPU detection
+fn gpu_fresh() -> GpuInfo {
+    // Try sysfs multi-GPU detection first (fast, no subprocess)
+    if let Some(info) = gpu_from_sysfs_multi() {
+        return info;
+    }
+
+    // Fallback to old detection methods
+    let mut info = GpuInfo::new();
+
+    // Try to find a discrete GPU first
     if let Some(name) = gpu_from_vulkaninfo(false) {
-        return name;
+        info.discrete = Some(name);
+    } else if let Some(name) = gpu_from_lspci(false) {
+        info.discrete = Some(name);
     }
 
-    if let Some(name) = gpu_from_lspci(false) {
-        return name;
-    }
-
-    // No discrete GPU found, try iGPU methods
-    // First try cpuinfo for friendly names like "AMD Radeon 780M"
+    // Try to find integrated GPU
     if let Some(name) = igpu_from_cpuinfo() {
-        return name;
+        info.integrated = Some(name);
+    } else if let Some(name) = gpu_from_vulkaninfo(true) {
+        // Only if we didn't find dGPU, this might be iGPU
+        if info.discrete.is_none() {
+            info.integrated = Some(name);
+        }
+    } else if let Some(name) = gpu_from_glxinfo() {
+        if info.discrete.is_none() {
+            info.integrated = Some(name);
+        }
     }
 
-    // Try vulkaninfo/glxinfo allowing integrated GPUs
-    if let Some(name) = gpu_from_vulkaninfo(true) {
-        return name;
+    // Final sysfs fallback (old single-GPU version)
+    if info.is_empty() {
+        if let Some(name) = gpu_from_sysfs() {
+            // Can't tell if it's iGPU or dGPU, assume discrete
+            info.discrete = Some(name);
+        }
     }
 
-    if let Some(name) = gpu_from_glxinfo() {
-        return name;
+    // Very final fallback: lspci allowing integrated
+    if info.is_empty() {
+        if let Some(name) = gpu_from_lspci(true) {
+            info.discrete = Some(name);
+        }
     }
 
-    // Fallback to sysfs + pci.ids lookup
-    if let Some(name) = gpu_from_sysfs() {
-        return name;
-    }
-
-    // Final fallback: lspci allowing integrated
-    if let Some(name) = gpu_from_lspci(true) {
-        return name;
-    }
-
-    "unknown".to_string()
+    info
 }
 
 
@@ -306,6 +336,7 @@ fn gpu_from_glxinfo() -> Option<String> {
 }
 
 // Get GPU name from sysfs + pci.ids database (using cached HashMap)
+// Old version - kept for fallback compatibility
 fn gpu_from_sysfs() -> Option<String> {
     let drm_path = std::path::Path::new("/sys/class/drm");
     if !drm_path.exists() {
@@ -349,7 +380,7 @@ fn gpu_from_sysfs() -> Option<String> {
         let (vendor_name, devices) = pci_db.get(&vendor_id)?;
         let device_name = devices.get(&device_id)?;
 
-        // Extract the part in bracketsAMD HawkPoint1  if present using byte-level search
+        // Extract the part in brackets if present using byte-level search
         let device_bytes = device_name.as_bytes();
         let display_name = memchr::memchr(b'[', device_bytes)
             .and_then(|start| {
@@ -378,6 +409,156 @@ fn gpu_from_sysfs() -> Option<String> {
         return Some(format!("{} {}", vendor_short, display_name));
     }
     None
+}
+
+// Get all GPUs from sysfs and classify them as integrated or discrete
+// Uses boot_vga flag, driver name, and cpuinfo cross-reference for classification
+fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
+    let drm_path = std::path::Path::new("/sys/class/drm");
+    if !drm_path.exists() {
+        return None;
+    }
+
+    // Get cached PCI database
+    let pci_db = get_pci_database().as_ref()?;
+
+    // Get CPU model string for iGPU name cross-reference
+    let cpu_igpu_name = igpu_from_cpuinfo();
+
+    let mut info = GpuInfo::new();
+    let mut found_any = false;
+
+    // Collect all card entries with their boot_vga status
+    let mut cards: Vec<(String, String, bool)> = Vec::new(); // (name, pci_id, is_boot_vga)
+
+    for entry in fs::read_dir(drm_path).ok()?.flatten() {
+        let name = entry.file_name();
+        let name_bytes = name.as_encoded_bytes();
+
+        // Only process card entries, not card0-DP-1 etc
+        if name_bytes.len() < 5
+            || &name_bytes[..4] != b"card"
+            || memchr::memchr(b'-', name_bytes).is_some()
+        {
+            continue;
+        }
+
+        let device_path = entry.path().join("device");
+        let uevent_path = device_path.join("uevent");
+        let uevent = match fs::read(&uevent_path) {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+
+        // Find PCI_ID using SIMD search
+        let pci_id_needle = b"PCI_ID=";
+        let pos = match memmem::find(&uevent, pci_id_needle) {
+            Some(p) => p,
+            None => continue,
+        };
+        let after_needle = &uevent[pos + pci_id_needle.len()..];
+
+        // Find end of line
+        let line_end = memchr::memchr(b'\n', after_needle).unwrap_or(after_needle.len());
+        let pci_id = match std::str::from_utf8(&after_needle[..line_end]) {
+            Ok(s) => s.to_string(),
+            Err(_) => continue,
+        };
+
+        // Check boot_vga flag (1 = primary/iGPU, 0 = secondary/dGPU)
+        let boot_vga_path = device_path.join("boot_vga");
+        let is_boot_vga = fs::read_to_string(&boot_vga_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<u8>().ok())
+            .map(|v| v == 1)
+            .unwrap_or(false);
+
+        cards.push((name.to_string_lossy().to_string(), pci_id, is_boot_vga));
+    }
+
+    // Process each card and classify
+    for (_card_name, pci_id, is_boot_vga) in cards {
+        // Parse PCI ID
+        let colon_pos = match memchr::memchr(b':', pci_id.as_bytes()) {
+            Some(p) => p,
+            None => continue,
+        };
+        let vendor_id = pci_id[..colon_pos].to_lowercase();
+        let device_id = pci_id[colon_pos + 1..].to_lowercase();
+
+        // Lookup in PCI database
+        let (vendor_name, devices) = match pci_db.get(&vendor_id) {
+            Some(v) => v,
+            None => continue,
+        };
+        let device_name = match devices.get(&device_id) {
+            Some(d) => d,
+            None => continue,
+        };
+
+        // Extract display name from brackets in device name
+        let device_bytes = device_name.as_bytes();
+        let display_name = memchr::memchr(b'[', device_bytes)
+            .and_then(|start| {
+                device_bytes.iter().rposition(|&b| b == b']').map(|end| {
+                    std::str::from_utf8(&device_bytes[start + 1..end]).unwrap_or(device_name)
+                })
+            })
+            .unwrap_or(device_name);
+
+        // Extract vendor short name
+        let vendor_bytes = vendor_name.as_bytes();
+        let vendor_short = memchr::memchr(b'[', vendor_bytes)
+            .and_then(|start| {
+                vendor_bytes.iter().rposition(|&b| b == b']').and_then(|end| {
+                    let bracketed = std::str::from_utf8(&vendor_bytes[start + 1..end]).ok()?;
+                    let slash_pos = memchr::memchr(b'/', bracketed.as_bytes());
+                    Some(match slash_pos {
+                        Some(p) => &bracketed[..p],
+                        None => bracketed,
+                    })
+                })
+            })
+            .unwrap_or("GPU");
+
+        let full_name = format!("{} {}", vendor_short, display_name);
+
+        // Classification logic:
+        // 1. If boot_vga=1, it's likely the iGPU (primary/integrated)
+        // 2. Check if device name contains "Integrated" or matches CPU iGPU name
+        // 3. Otherwise, treat as discrete GPU
+        let is_integrated = is_boot_vga
+            || display_name.contains("Integrated")
+            || display_name.contains("Graphics")
+            || cpu_igpu_name.as_ref().map_or(false, |cpuname| {
+                display_name.contains(cpuname) || cpuname.contains(display_name)
+            });
+
+        if is_integrated {
+            // Prefer exact name from cpuinfo for iGPU if available
+            if let Some(ref exact_name) = cpu_igpu_name {
+                if info.integrated.is_none() {
+                    info.integrated = Some(exact_name.clone());
+                    found_any = true;
+                }
+            } else if info.integrated.is_none() {
+                info.integrated = Some(full_name);
+                found_any = true;
+            }
+        } else {
+            // Discrete GPU
+            if info.discrete.is_none() {
+                info.discrete = Some(full_name);
+                found_any = true;
+            }
+        }
+    }
+
+    if found_any {
+        Some(info)
+    } else {
+        None
+    }
 }
 
 // Get GPU name from lspci -mm (final fallback)

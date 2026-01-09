@@ -2,7 +2,7 @@
 // Generates TOML content matching the original config.toml format
 
 use crate::configloader::{
-    BorderLineStyle, BoxStyle, CoreToggles, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
+    BorderLineStyle, BoxStyle, CoreToggles, GpuDisplayMode, HardwareToggles, NerdFontSetting, OsArtSetting, ThemePreset, UserspaceToggles,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -56,6 +56,7 @@ pub fn generate_config_toml(
     image_path: &Option<String>,
     box_style: BoxStyle,
     border_line_style: BorderLineStyle,
+    gpu_display: GpuDisplayMode,
     core: &CoreToggles,
     hardware: &HardwareToggles,
     userspace: &UserspaceToggles,
@@ -159,6 +160,17 @@ pub fn generate_config_toml(
     output.push_str("## Note: battery can be set to true on a desktop, will only display if your device is portable.\n");
     write_bool_setting(&mut output, "cpu", hardware.cpu, true);
     write_bool_setting(&mut output, "gpu", hardware.gpu, true);
+    output.push_str("## GPU display mode: \"auto\" (default), \"igpu\", \"dgpu\", or \"both\"\n");
+    output.push_str("## - auto: Shows discrete GPU if present, otherwise integrated GPU\n");
+    output.push_str("## - igpu/integrated: Shows only integrated GPU\n");
+    output.push_str("## - dgpu/discrete: Shows only discrete GPU\n");
+    output.push_str("## - both: Shows both GPUs in tree-style format\n");
+    match gpu_display {
+        GpuDisplayMode::Auto => output.push_str("# gpu_display = \"auto\"\n"),
+        GpuDisplayMode::Integrated => output.push_str("gpu_display = \"igpu\"\n"),
+        GpuDisplayMode::Discrete => output.push_str("gpu_display = \"dgpu\"\n"),
+        GpuDisplayMode::Both => output.push_str("gpu_display = \"both\"\n"),
+    }
     write_bool_setting(&mut output, "memory", hardware.memory, true);
     write_bool_setting(&mut output, "storage", hardware.storage, true);
     write_bool_setting(&mut output, "battery", hardware.battery, true);
@@ -197,6 +209,7 @@ pub fn save_config(
     image_path: &Option<String>,
     box_style: BoxStyle,
     border_line_style: BorderLineStyle,
+    gpu_display: GpuDisplayMode,
     core: &CoreToggles,
     hardware: &HardwareToggles,
     userspace: &UserspaceToggles,
@@ -208,7 +221,7 @@ pub fn save_config(
         fs::create_dir_all(parent).map_err(|e| format!("Could not create config directory: {}", e))?;
     }
 
-    let content = generate_config_toml(theme, nerd_fonts, os_art, custom_art, image, image_path, box_style, border_line_style, core, hardware, userspace);
+    let content = generate_config_toml(theme, nerd_fonts, os_art, custom_art, image, image_path, box_style, border_line_style, gpu_display, core, hardware, userspace);
 
     fs::write(&path, content).map_err(|e| format!("Could not write config file: {}", e))?;
 

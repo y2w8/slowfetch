@@ -23,7 +23,7 @@ pub fn set_nerd_font_override(mode: u8) {
     NERD_FONT_OVERRIDE.store(mode, Ordering::Relaxed);
 }
 
-fn get_cached_is_nerd_font() -> bool {
+pub fn get_cached_is_nerd_font() -> bool {
     match NERD_FONT_OVERRIDE.load(Ordering::Relaxed) {
         1 => true,  // Force on
         2 => false, // Force off

@@ -70,6 +70,7 @@ impl Default for CoreToggles {
 pub struct HardwareToggles {
     pub cpu: bool,
     pub gpu: bool,
+    pub gpu_display: GpuDisplayMode,
     pub memory: bool,
     pub storage: bool,
     pub battery: bool,
@@ -81,6 +82,7 @@ impl Default for HardwareToggles {
         Self {
             cpu: true,
             gpu: true,
+            gpu_display: GpuDisplayMode::default(),
             memory: true,
             storage: true,
             battery: true,
@@ -154,6 +156,28 @@ pub enum NerdFontSetting {
     Auto,
     ForceOn,
     ForceOff,
+}
+
+// GPU display mode - controls which GPU(s) to show
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum GpuDisplayMode {
+    #[default]
+    Auto,       // Show dGPU if present, else iGPU
+    Integrated, // Show only integrated GPU
+    Discrete,   // Show only discrete GPU
+    Both,       // Show both GPUs in tree-style format
+}
+
+impl GpuDisplayMode {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "igpu" | "integrated" => Some(Self::Integrated),
+            "dgpu" | "discrete" => Some(Self::Discrete),
+            "both" => Some(Self::Both),
+            _ => None,
+        }
+    }
 }
 
 // Box corner style - rounded or square
@@ -641,6 +665,20 @@ fn parse_config(content: &str) -> Config {
             match key {
                 b"cpu" => config.hardware.cpu = is_true,
                 b"gpu" => config.hardware.gpu = is_true,
+                b"gpu_display" => {
+                    // Parse gpu_display mode (quoted or unquoted)
+                    if value.first() == Some(&b'"') && value.last() == Some(&b'"') && value.len() > 2 {
+                        if let Ok(mode_name) = std::str::from_utf8(&value[1..value.len() - 1]) {
+                            if let Some(mode) = GpuDisplayMode::from_str(mode_name) {
+                                config.hardware.gpu_display = mode;
+                            }
+                        }
+                    } else if let Ok(mode_name) = std::str::from_utf8(value) {
+                        if let Some(mode) = GpuDisplayMode::from_str(mode_name) {
+                            config.hardware.gpu_display = mode;
+                        }
+                    }
+                }
                 b"memory" => config.hardware.memory = is_true,
                 b"storage" => config.hardware.storage = is_true,
                 b"battery" => config.hardware.battery = is_true,
