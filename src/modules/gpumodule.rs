@@ -109,49 +109,59 @@ pub fn gpu() -> GpuInfo {
 }
 
 // Fetch GPU info fresh (no cache)
-// New sysfs-first approach with dual-GPU detection
+// Hybrid approach: Use sysfs for fast dual-GPU classification,
+// but refine discrete GPU names with vulkaninfo/glxinfo when available
 fn gpu_fresh() -> GpuInfo {
-    // Try sysfs multi-GPU detection first (fast, no subprocess)
-    if let Some(info) = gpu_from_sysfs_multi() {
-        return info;
-    }
+    // Start with sysfs multi-GPU detection for fast classification
+    let mut info = match gpu_from_sysfs_multi() {
+        Some(i) => i,
+        None => GpuInfo::new(),
+    };
 
-    // Fallback to old detection methods
-    let mut info = GpuInfo::new();
-
-    // Try to find a discrete GPU first
-    if let Some(name) = gpu_from_vulkaninfo(false) {
-        info.discrete = Some(name);
-    } else if let Some(name) = gpu_from_lspci(false) {
-        info.discrete = Some(name);
-    }
-
-    // Try to find integrated GPU
-    if let Some(name) = igpu_from_cpuinfo() {
-        info.integrated = Some(name);
-    } else if let Some(name) = gpu_from_vulkaninfo(true) {
-        // Only if didn't find dGPU, this might be iGPU
-        if info.discrete.is_none() {
-            info.integrated = Some(name);
-        }
-    } else if let Some(name) = gpu_from_glxinfo() {
-        if info.discrete.is_none() {
-            info.integrated = Some(name);
+    // If we found a discrete GPU from sysfs, try to get a more specific name
+    // from vulkaninfo/glxinfo (they often provide better model specificity)
+    if info.discrete.is_some() {
+        if let Some(specific_name) = gpu_from_vulkaninfo(false) {
+            info.discrete = Some(specific_name);
+        } else if let Some(specific_name) = gpu_from_glxinfo() {
+            info.discrete = Some(specific_name);
         }
     }
 
-    // Final sysfs fallback (old single-GPU version)
+    // If sysfs didn't find anything, try fallback methods
     if info.is_empty() {
-        if let Some(name) = gpu_from_sysfs() {
-            // Can't tell if it's iGPU or dGPU, assume discrete
+        // Try to find a discrete GPU first
+        if let Some(name) = gpu_from_vulkaninfo(false) {
+            info.discrete = Some(name);
+        } else if let Some(name) = gpu_from_lspci(false) {
             info.discrete = Some(name);
         }
-    }
 
-    // Very final fallback: lspci allowing integrated
-    if info.is_empty() {
-        if let Some(name) = gpu_from_lspci(true) {
-            info.discrete = Some(name);
+        // Try to find integrated GPU
+        if let Some(name) = igpu_from_cpuinfo() {
+            info.integrated = Some(name);
+        } else if let Some(name) = gpu_from_vulkaninfo(true) {
+            if info.discrete.is_none() {
+                info.integrated = Some(name);
+            }
+        } else if let Some(name) = gpu_from_glxinfo() {
+            if info.discrete.is_none() {
+                info.integrated = Some(name);
+            }
+        }
+
+        // Final sysfs fallback (old single-GPU version)
+        if info.is_empty() {
+            if let Some(name) = gpu_from_sysfs() {
+                info.discrete = Some(name);
+            }
+        }
+
+        // Very final fallback: lspci allowing integrated
+        if info.is_empty() {
+            if let Some(name) = gpu_from_lspci(true) {
+                info.discrete = Some(name);
+            }
         }
     }
 
