@@ -482,8 +482,17 @@ fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
                     found_any = true;
                 }
             } else if info.integrated.is_none() {
-                info.integrated = Some(full_name);
-                found_any = true;
+                // Skip generic architecture/platform names
+                let is_generic_name = !display_name.contains("Radeon")
+                    && !display_name.contains("UHD")
+                    && !display_name.contains("Iris")
+                    && !display_name.contains("HD Graphics")
+                    && !display_name.contains("Xe Graphics");
+
+                if !is_generic_name {
+                    info.integrated = Some(full_name);
+                    found_any = true;
+                }
             }
         } else {
             // Discrete GPU
