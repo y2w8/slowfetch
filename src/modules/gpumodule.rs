@@ -222,38 +222,61 @@ fn gpu_from_vulkaninfo(allow_igpu: bool) -> Option<String> {
         .arg("--summary")
         .output()
         .ok()?;
+
+    // Don't check exit status - vulkaninfo may return non-zero even with valid output
     let stdout = &output.stdout;
 
-    // Find "deviceName" using SIMD-accelerated search
+    // Search for all deviceName entries and find the appropriate one
     let needle = b"deviceName";
-    let pos = memmem::find(stdout, needle)?;
+    let mut search_pos = 0;
 
-    // Find the '=' after deviceName
-    let after_needle = &stdout[pos + needle.len()..];
-    let eq_pos = memchr::memchr(b'=', after_needle)?;
-    let after_eq = &after_needle[eq_pos + 1..];
+    while let Some(relative_pos) = memmem::find(&stdout[search_pos..], needle) {
+        let pos = search_pos + relative_pos;
 
-    // Find end of line
-    let line_end = memchr::memchr(b'\n', after_eq).unwrap_or(after_eq.len());
-    let name_bytes = &after_eq[..line_end];
+        // Find the '=' after deviceName
+        let after_needle = &stdout[pos + needle.len()..];
+        let eq_pos = match memchr::memchr(b'=', after_needle) {
+            Some(p) => p,
+            None => {
+                search_pos = pos + needle.len();
+                continue;
+            }
+        };
+        let after_eq = &after_needle[eq_pos + 1..];
 
-    // Convert to string and trim
-    let name = std::str::from_utf8(name_bytes).ok()?.trim();
+        // Find end of line
+        let line_end = memchr::memchr(b'\n', after_eq).unwrap_or(after_eq.len());
+        let name_bytes = &after_eq[..line_end];
 
-    // Remove the parenthetical driver info
-    let name = name.split('(').next().unwrap_or(name).trim();
+        // Convert to string and trim
+        let name = match std::str::from_utf8(name_bytes).ok() {
+            Some(n) => n.trim(),
+            None => {
+                search_pos = pos + needle.len();
+                continue;
+            }
+        };
 
-    // Always skip llvmpipe (software renderer)
-    if name.is_empty() || name.contains("llvmpipe") {
-        return None;
+        // Remove the parenthetical driver info
+        let name = name.split('(').next().unwrap_or(name).trim();
+
+        // Skip llvmpipe (software renderer)
+        if name.is_empty() || name.contains("llvmpipe") {
+            search_pos = pos + needle.len();
+            continue;
+        }
+
+        // Skip integrated GPU unless allowed
+        if !allow_igpu && name.contains("Processor") {
+            search_pos = pos + needle.len();
+            continue;
+        }
+
+        // Found a valid GPU
+        return Some(name.to_string());
     }
 
-    // Skip integrated GPU unless allowed (for laptops without discrete GPU)
-    if !allow_igpu && name.contains("Processor") {
-        return None;
-    }
-
-    Some(name.to_string())
+    None
 }
 
 // Get GPU name from glxinfo (requires X11/Wayland with GL)
