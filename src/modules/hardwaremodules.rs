@@ -529,8 +529,17 @@ fn screen_from_drm() -> Option<Vec<(String, String)>> {
     use std::fs::File;
     use std::os::unix::io::AsRawFd;
 
-    let fd = File::open("/dev/dri/card0").ok()?;
+    // Try opening DRM cards in order (card0, card1, card2) to find the active GPU
+    let (fd, card_num) = (0..3)
+        .find_map(|i| {
+            File::open(format!("/dev/dri/card{}", i))
+                .ok()
+                .map(|f| (f, i))
+        })?;
     let raw_fd = fd.as_raw_fd();
+
+    // Create prefix for filtering sysfs entries (e.g., "card1-")
+    let card_prefix = format!("card{}-", card_num);
 
     let mut screens: Vec<(bool, String)> = Vec::new();
 
@@ -539,8 +548,8 @@ fn screen_from_drm() -> Option<Vec<(String, String)>> {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
 
-        // Only process connector entries like card0-eDP-1, card0-DP-1
-        if !name_str.starts_with("card0-") || name_str.contains("Writeback") {
+        // Only process connector entries like card1-eDP-1, card1-DP-1
+        if !name_str.starts_with(&card_prefix) || name_str.contains("Writeback") {
             continue;
         }
 

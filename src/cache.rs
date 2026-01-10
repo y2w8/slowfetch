@@ -124,3 +124,13 @@ pub fn get_cached_cpu() -> Option<String> {
 pub fn cache_cpu(value: &str) {
     let _ = write_cache("cpu", value);
 }
+
+// Read cached init system value, or return None to trigger a fresh fetch.
+pub fn get_cached_init() -> Option<String> {
+    read_cache("init")
+}
+
+// Cache the init system value
+pub fn cache_init(value: &str) {
+    let _ = write_cache("init", value);
+}

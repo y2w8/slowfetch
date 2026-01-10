@@ -142,16 +142,44 @@ pub fn uptime() -> String {
 }
 
 // Get the init system (PID 1 process name)
+// Uses persistent cache to avoid repeated detection (init system doesn't change)
 pub fn init() -> String {
-    use std::process::Command;
+    // Check cache first (unless --refresh was passed)
+    if let Some(cached) = cache::get_cached_init() {
+        return cached;
+    }
 
-    if let Ok(output) = Command::new("ps")
-        .args(["-p", "1", "-o", "comm="])
-        .output()
+    // No cache hit, fetch fresh value
+    let result = init_fresh();
+
+    // Cache the result for next time
+    cache::cache_init(&result);
+
+    result
+}
+
+// Fetch init system info fresh (no cache)
+fn init_fresh() -> String {
+    #[cfg(target_os = "linux")]
     {
-        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !name.is_empty() {
-            return name;
+        // Fast path: read directly from /proc/1/comm (no subprocess spawn)
+        if let Ok(comm) = fs::read_to_string("/proc/1/comm") {
+            return comm.trim().to_string();
+        }
+    }
+
+    // Fallback for macOS or if /proc isn't available
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("ps")
+            .args(["-p", "1", "-o", "comm="])
+            .output()
+        {
+            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !name.is_empty() {
+                return name;
+            }
         }
     }
 
