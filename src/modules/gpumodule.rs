@@ -450,7 +450,7 @@ fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
     }
 
     // Process each card and classify
-    for (_card_name, pci_id, is_boot_vga) in cards {
+    for (_card_name, pci_id, _is_boot_vga) in cards {
         // Parse PCI ID
         let colon_pos = match memchr::memchr(b':', pci_id.as_bytes()) {
             Some(p) => p,
@@ -497,15 +497,25 @@ fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
         let full_name = format!("{} {}", vendor_short, display_name);
 
         // Classification logic:
-        // 1. If boot_vga=1, it's likely the iGPU (primary/integrated)
-        // 2. Check if device name contains "Integrated" or matches CPU iGPU name
+        // 1. First check if it's clearly a discrete GPU (RX, RTX, GTX, etc.)
+        // 2. Then check integrated indicators (boot_vga alone isn't reliable - dGPU can be primary)
         // 3. Otherwise, treat as discrete GPU
-        let is_integrated = is_boot_vga
-            || display_name.contains("Integrated")
-            || display_name.contains("Graphics")
-            || cpu_igpu_name.as_ref().map_or(false, |cpuname| {
-                display_name.contains(cpuname) || cpuname.contains(display_name)
-            });
+        let is_clearly_discrete = display_name.contains("RX ")
+            || display_name.contains("RTX ")
+            || display_name.contains("GTX ")
+            || display_name.contains("Navi")
+            || display_name.contains("GeForce")
+            || display_name.contains("Quadro")
+            || display_name.contains("Arc")  // Intel Arc discrete
+            || display_name.contains("Vega 56")
+            || display_name.contains("Vega 64");
+
+        let is_integrated = !is_clearly_discrete
+            && (display_name.contains("Integrated")
+                || display_name.contains("Graphics")
+                || cpu_igpu_name.as_ref().map_or(false, |cpuname| {
+                    display_name.contains(cpuname) || cpuname.contains(display_name)
+                }));
 
         if is_integrated {
             // Prefer exact name from cpuinfo for iGPU if available
