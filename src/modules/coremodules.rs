@@ -5,19 +5,45 @@ use std::fs;
 use crate::cache;
 use crate::helpers::read_first_line;
 
+// Check if the system is an immutable OS by examining /etc/os-release
+fn is_immutable_os() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(content) = fs::read_to_string("/etc/os-release") {
+            for line in content.lines() {
+                if line.starts_with("PRETTY_NAME=") {
+                    let pretty_name = line
+                        .trim_start_matches("PRETTY_NAME=")
+                        .trim_matches(|c| c == '"' || c == '\'');
+                    return pretty_name.contains("Silverblue");
+                }
+            }
+        }
+    }
+    false
+}
+
 // Get the OS name from /etc/os-release.
 // Uses persistent cache to avoid repeated file reads.
+// Note: Caching is disabled for immutable OSes since the OS name changes daily.
 pub fn os() -> String {
-    // Check cache first (unless --refresh was passed)
-    if let Some(cached) = cache::get_cached_os() {
-        return cached;
+    // Check if we're on an immutable OS first
+    let is_immutable = is_immutable_os();
+
+    // Check cache first (unless --refresh was passed or on immutable OS)
+    if !is_immutable {
+        if let Some(cached) = cache::get_cached_os() {
+            return cached;
+        }
     }
 
     // No cache hit, fetch fresh value
     let result = os_fresh();
 
-    // Cache the result for next time
-    cache::cache_os(&result);
+    // Cache the result for next time (unless on immutable OS)
+    if !is_immutable {
+        cache::cache_os(&result);
+    }
 
     result
 }
