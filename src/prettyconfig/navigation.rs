@@ -115,7 +115,7 @@ impl App {
         let mut full_config = config.clone();
         full_config.core = CoreToggles { os: true, kernel: true, uptime: true, init: true };
         full_config.hardware = HardwareToggles {
-            cpu: true, gpu: true, gpu_display: crate::configloader::GpuDisplayMode::Auto, memory: true, storage: true, battery: true, screen: true,
+            cpu: true, gpu: true, gpu_display: config.hardware.gpu_display, memory: true, storage: true, battery: true, screen: true,
         };
         full_config.userspace = UserspaceToggles {
             packages: true, terminal: true, shell: true, wm: true, ui: true, editor: true, terminal_font: true,
@@ -296,6 +296,7 @@ impl App {
             GpuDisplayMode::Discrete => GpuDisplayMode::Both,
             GpuDisplayMode::Both => GpuDisplayMode::Auto,
         };
+        self.reload_sections_for_gpu_display();
     }
 
     pub fn cycle_gpu_display_prev(&mut self) {
@@ -305,6 +306,7 @@ impl App {
             GpuDisplayMode::Discrete => GpuDisplayMode::Integrated,
             GpuDisplayMode::Both => GpuDisplayMode::Discrete,
         };
+        self.reload_sections_for_gpu_display();
     }
 
     fn reload_sections_for_nerd_fonts(&mut self) {
@@ -327,7 +329,29 @@ impl App {
             border_line_style: self.border_line_style,
             core: CoreToggles { os: true, kernel: true, uptime: true, init: true },
             hardware: HardwareToggles {
-                cpu: true, gpu: true, gpu_display: crate::configloader::GpuDisplayMode::Auto, memory: true, storage: true, battery: true, screen: true,
+                cpu: true, gpu: true, gpu_display: self.gpu_display, memory: true, storage: true, battery: true, screen: true,
+            },
+            userspace: UserspaceToggles {
+                packages: true, terminal: true, shell: true, wm: true, ui: true, editor: true, terminal_font: true,
+            },
+        };
+        self.cached_sections = dostuff::load_sections(&full_config);
+    }
+
+    fn reload_sections_for_gpu_display(&mut self) {
+        // Reload sections with the new gpu_display mode
+        let full_config = Config {
+            os_art: self.os_art.clone(),
+            colors: crate::configloader::ColorConfig::default(),
+            custom_art: self.custom_art.clone(),
+            image: self.image,
+            image_path: self.image_path.clone(),
+            nerd_fonts: self.nerd_fonts,
+            box_style: self.box_style,
+            border_line_style: self.border_line_style,
+            core: CoreToggles { os: true, kernel: true, uptime: true, init: true },
+            hardware: HardwareToggles {
+                cpu: true, gpu: true, gpu_display: self.gpu_display, memory: true, storage: true, battery: true, screen: true,
             },
             userspace: UserspaceToggles {
                 packages: true, terminal: true, shell: true, wm: true, ui: true, editor: true, terminal_font: true,
