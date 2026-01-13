@@ -1,6 +1,10 @@
 // GPU information module for Slowfetch.
 // Handles GPU detection (both integrated and discrete) and display formatting.
 
+#[cfg(test)]
+#[path = "gpumodule_tests.rs"]
+mod tests;
+
 use std::fs;
 use std::process::Command;
 
@@ -118,7 +122,7 @@ fn gpu_fresh() -> GpuInfo {
         None => GpuInfo::new(),
     };
 
-    // If we found a discrete GPU from sysfs, try to get a more specific name
+    // If found a discrete GPU from sysfs, try to get a more specific name
     // from vulkaninfo/glxinfo (they often provide better model specificity)
     if info.discrete.is_some() {
         if let Some(specific_name) = gpu_from_vulkaninfo(false) {
@@ -384,8 +388,113 @@ fn gpu_from_sysfs() -> Option<String> {
     None
 }
 
+// Known AMD APU architecture codenames
+// These appear in pci.ids without "Radeon" or "Graphics" suffix
+const AMD_APU_CODENAMES: &[&str] = &[
+    "Strix Point", // Ryzen AI 9 HX 300 series
+    "Strix Halo",  // Ryzen AI Max series
+    "Phoenix",     // Ryzen 7000/8000 mobile
+    "Hawk Point",  // Ryzen 8040 series
+    "Rembrandt",   // Ryzen 6000 mobile
+    "Barcelo",     // Ryzen 5000 mobile refresh
+    "Cezanne",     // Ryzen 5000 mobile
+    "Lucienne",    // Ryzen 5000 mobile
+    "Renoir",      // Ryzen 4000 mobile
+    "Picasso",     // Ryzen 3000 mobile
+    "Raven",       // Ryzen 2000 mobile
+    "Stoney",      // older AMD APU
+    "Carrizo",     // older AMD APU
+    "Kaveri",      // older AMD APU
+    "Kabini",      // older AMD APU
+    "Mullins",     // older AMD APU
+];
+
+// Check if a display name indicates a clearly discrete GPU
+fn is_clearly_discrete_gpu(display_name: &str) -> bool {
+    display_name.contains("RX ")
+        || display_name.contains("RTX ")
+        || display_name.contains("GTX ")
+        || display_name.contains("Navi")
+        || display_name.contains("GeForce")
+        || display_name.contains("Quadro")
+        || display_name.contains("Arc") // Intel Arc discrete
+        || display_name.contains("Vega 56")
+        || display_name.contains("Vega 64")
+        || display_name.contains("DG1") // Intel DG1
+        || display_name.contains("DG2") // Intel DG2
+}
+
+// Check if a display name indicates an integrated GPU
+fn is_integrated_gpu(display_name: &str, vendor_id: &str, cpu_igpu_name: Option<&String>) -> bool {
+    // Check explicit integrated markers
+    if display_name.contains("Integrated") {
+        return true;
+    }
+
+    // Check for AMD APU codenames (e.g., "Phoenix1", "Rembrandt")
+    if vendor_id == "1002" {
+        for codename in AMD_APU_CODENAMES {
+            if display_name.contains(codename) {
+                return true;
+            }
+        }
+        // AMD mobile iGPU model numbers (e.g., "780M", "680M")
+        // These are integrated when they appear alone (not as part of RX series)
+        if (display_name.contains("890M")
+            || display_name.contains("880M")
+            || display_name.contains("8060S") 
+            || display_name.contains("780M")
+            || display_name.contains("760M")
+            || display_name.contains("740M")
+            || display_name.contains("680M")
+            || display_name.contains("660M"))
+            && !display_name.contains("RX ")
+        {
+            return true;
+        }
+    }
+
+    // Check "Graphics" marker (but not for discrete cards that might have it)
+    if display_name.contains("Graphics") {
+        return true;
+    }
+
+    // Intel-specific integrated patterns
+    if vendor_id == "8086" {
+        if display_name.contains("UHD")
+            || display_name.contains("Iris")
+            || display_name.contains("HD Graphics")
+            || display_name.contains("Xe Graphics")
+            // Meteor Lake and newer just say "Intel Graphics"
+            || display_name == "Intel Graphics"
+            || display_name.contains("Meteor Lake")
+            || display_name.contains("Lunar Lake")
+            || display_name.contains("Arrow Lake")
+        {
+            return true;
+        }
+    }
+
+    // Cross-reference with cpuinfo
+    if let Some(cpuname) = cpu_igpu_name {
+        if display_name.contains(cpuname.as_str()) || cpuname.contains(display_name) {
+            return true;
+        }
+    }
+
+    false
+}
+
+// Struct to hold parsed card info for two-pass classification
+struct CardInfo {
+    vendor_id: String,
+    display_name: String,
+    full_name: String,
+    is_boot_vga: bool,
+}
+
 // Get all GPUs from sysfs and classify them as integrated or discrete
-// Uses boot_vga flag, driver name, and cpuinfo cross-reference for classification
+// Uses two-pass approach: first identify discrete GPUs, then classify remainder
 fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
     let drm_path = std::path::Path::new("/sys/class/drm");
     if !drm_path.exists() {
@@ -398,11 +507,8 @@ fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
     // Get CPU model string for iGPU name cross-reference
     let cpu_igpu_name = igpu_from_cpuinfo();
 
-    let mut info = GpuInfo::new();
-    let mut found_any = false;
-
-    // Collect all card entries with their boot_vga status
-    let mut cards: Vec<(String, String, bool)> = Vec::new(); // (name, pci_id, is_boot_vga)
+    // Collect all card info first
+    let mut cards: Vec<CardInfo> = Vec::new();
 
     for entry in fs::read_dir(drm_path).ok()?.flatten() {
         let name = entry.file_name();
@@ -438,7 +544,7 @@ fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
             Err(_) => continue,
         };
 
-        // Check boot_vga flag (1 = primary/iGPU, 0 = secondary/dGPU)
+        // Check boot_vga flag
         let boot_vga_path = device_path.join("boot_vga");
         let is_boot_vga = fs::read_to_string(&boot_vga_path)
             .ok()
@@ -446,11 +552,6 @@ fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
             .map(|v| v == 1)
             .unwrap_or(false);
 
-        cards.push((name.to_string_lossy().to_string(), pci_id, is_boot_vga));
-    }
-
-    // Process each card and classify
-    for (_card_name, pci_id, _is_boot_vga) in cards {
         // Parse PCI ID
         let colon_pos = match memchr::memchr(b':', pci_id.as_bytes()) {
             Some(p) => p,
@@ -496,57 +597,82 @@ fn gpu_from_sysfs_multi() -> Option<GpuInfo> {
 
         let full_name = format!("{} {}", vendor_short, display_name);
 
-        // Classification logic:
-        // 1. First check if it's clearly a discrete GPU (RX, RTX, GTX, etc.)
-        // 2. Then check integrated indicators (boot_vga alone isn't reliable - dGPU can be primary)
-        // 3. Otherwise, treat as discrete GPU
-        let is_clearly_discrete = display_name.contains("RX ")
-            || display_name.contains("RTX ")
-            || display_name.contains("GTX ")
-            || display_name.contains("Navi")
-            || display_name.contains("GeForce")
-            || display_name.contains("Quadro")
-            || display_name.contains("Arc")  // Intel Arc discrete
-            || display_name.contains("Vega 56")
-            || display_name.contains("Vega 64");
+        cards.push(CardInfo {
+            vendor_id,
+            display_name: display_name.to_string(),
+            full_name,
+            is_boot_vga,
+        });
+    }
 
-        let is_integrated = !is_clearly_discrete
-            && (display_name.contains("Integrated")
-                || display_name.contains("Graphics")
-                || cpu_igpu_name.as_ref().map_or(false, |cpuname| {
-                    display_name.contains(cpuname) || cpuname.contains(display_name)
-                }));
+    if cards.is_empty() {
+        return None;
+    }
 
-        if is_integrated {
-            // Prefer exact name from cpuinfo for iGPU if available
-            if let Some(ref exact_name) = cpu_igpu_name {
-                if info.integrated.is_none() {
-                    info.integrated = Some(exact_name.clone());
-                    found_any = true;
-                }
-            } else if info.integrated.is_none() {
-                // Skip generic architecture/platform names
-                let is_generic_name = !display_name.contains("Radeon")
-                    && !display_name.contains("UHD")
-                    && !display_name.contains("Iris")
-                    && !display_name.contains("HD Graphics")
-                    && !display_name.contains("Xe Graphics");
+    let mut info = GpuInfo::new();
 
-                if !is_generic_name {
-                    info.integrated = Some(full_name);
-                    found_any = true;
+    // PASS 1: Find clearly discrete GPUs first
+    // This prevents misclassification when an iGPU with a generic name comes first
+    for card in &cards {
+        if is_clearly_discrete_gpu(&card.display_name) {
+            if info.discrete.is_none() {
+                info.discrete = Some(card.full_name.clone());
+            }
+            break;
+        }
+    }
+
+    // PASS 2: Classify remaining cards
+    // Now its known if a discrete GPU exists, can better classify others
+    let has_discrete = info.discrete.is_some();
+
+    for card in &cards {
+        // Skip if this is the discrete GPU already found
+        if info.discrete.as_ref() == Some(&card.full_name) {
+            continue;
+        }
+
+        let is_discrete = is_clearly_discrete_gpu(&card.display_name);
+        let is_integrated =
+            is_integrated_gpu(&card.display_name, &card.vendor_id, cpu_igpu_name.as_ref());
+
+        if is_discrete {
+            // Another discrete GPU (multi-GPU setup)
+            if info.discrete.is_none() {
+                info.discrete = Some(card.full_name.clone());
+            }
+        } else if is_integrated {
+            if info.integrated.is_none() {
+                // Prefer cpuinfo name for AMD iGPUs (more specific)
+                if card.vendor_id == "1002" {
+                    if let Some(ref exact_name) = cpu_igpu_name {
+                        info.integrated = Some(exact_name.clone());
+                    } else {
+                        info.integrated = Some(card.full_name.clone());
+                    }
+                } else {
+                    info.integrated = Some(card.full_name.clone());
                 }
             }
-        } else {
-            // Discrete GPU
+        } else if has_discrete && card.is_boot_vga {
+            // If its a discrete GPU and this unknown card is boot_vga,
+            // it's likely the integrated GPU (common in laptops)
+            if info.integrated.is_none() {
+                if let Some(ref exact_name) = cpu_igpu_name {
+                    info.integrated = Some(exact_name.clone());
+                } else {
+                    info.integrated = Some(card.full_name.clone());
+                }
+            }
+        } else if !has_discrete {
+            // No discrete GPU found, treat unknown as discrete
             if info.discrete.is_none() {
-                info.discrete = Some(full_name);
-                found_any = true;
+                info.discrete = Some(card.full_name.clone());
             }
         }
     }
 
-    if found_any {
+    if info.integrated.is_some() || info.discrete.is_some() {
         Some(info)
     } else {
         None
