@@ -642,10 +642,24 @@ fn screen_from_drm() -> Option<Vec<(String, String)>> {
             let is_portrait = (rotation & (DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0
                 || mode.vdisplay > mode.hdisplay;
 
+            // Calculate refresh rate from timing parameters if vrefresh is 0 or missing
+            // Formula: refresh = (clock * 1000) / (htotal * vtotal)
+            // clock is in kHz, so multiply by 1000 to get Hz
+            let refresh = if mode.vrefresh > 0 {
+                mode.vrefresh
+            } else if mode.htotal > 0 && mode.vtotal > 0 {
+                let htotal = mode.htotal as u32;
+                let vtotal = mode.vtotal as u32;
+                // clock is in kHz, result is in Hz
+                mode.clock * 1000 / (htotal * vtotal)
+            } else {
+                0
+            };
+
             let icon = if is_portrait { "󰆡" } else { "󰏠" };
             let display_str = format!(
                 "{} {}x{} @ {}Hz",
-                icon, mode.hdisplay, mode.vdisplay, mode.vrefresh
+                icon, mode.hdisplay, mode.vdisplay, refresh
             );
             screens.push((is_primary, display_str));
         }
