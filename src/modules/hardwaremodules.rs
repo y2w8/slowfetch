@@ -368,6 +368,19 @@ struct DrmModeGetEncoder {
 }
 
 #[repr(C)]
+struct DrmModeGetCrtc {
+    set_connectors_ptr: u64,
+    count_connectors: u32,
+    crtc_id: u32,
+    fb_id: u32,
+    x: u32,
+    y: u32,
+    gamma_size: u32,
+    mode_valid: u32,
+    mode: DrmModeModeinfo,
+}
+
+#[repr(C)]
 struct DrmModeGetPlaneRes {
     plane_id_ptr: u64,
     count_planes: u32,
@@ -407,6 +420,7 @@ struct DrmModeGetProperty {
 // DRM ioctl numbers
 const DRM_IOCTL_MODE_GETCONNECTOR: libc::c_ulong = 0xc05064a7;
 const DRM_IOCTL_MODE_GETENCODER: libc::c_ulong = 0xc01464a6;
+const DRM_IOCTL_MODE_GETCRTC: libc::c_ulong = 0xc06864a1;
 const DRM_IOCTL_MODE_GETPLANERESOURCES: libc::c_ulong = 0xc01064b5;
 const DRM_IOCTL_MODE_GETPLANE: libc::c_ulong = 0xc02064b6;
 const DRM_IOCTL_MODE_OBJ_GETPROPERTIES: libc::c_ulong = 0xc02064b9;
@@ -612,7 +626,7 @@ fn screen_from_drm() -> Option<Vec<(String, String)>> {
             continue;
         }
 
-        // Get CRTC ID via encoder to check rotation
+        // Get CRTC ID via encoder to get current mode and rotation
         let mut crtc_id: u32 = 0;
         if conn.encoder_id != 0 {
             let mut encoder = DrmModeGetEncoder {
@@ -627,43 +641,65 @@ fn screen_from_drm() -> Option<Vec<(String, String)>> {
             }
         }
 
-        // Check rotation from CRTC's plane
-        let rotation = if crtc_id != 0 {
-            get_crtc_rotation(raw_fd, crtc_id)
-        } else {
-            DRM_MODE_ROTATE_0
+        // Skip if no CRTC (display not active)
+        if crtc_id == 0 {
+            continue;
+        }
+
+        // Get the current mode from CRTC (the actually active mode, not just preferred)
+        let mut crtc = DrmModeGetCrtc {
+            set_connectors_ptr: 0,
+            count_connectors: 0,
+            crtc_id,
+            fb_id: 0,
+            x: 0,
+            y: 0,
+            gamma_size: 0,
+            mode_valid: 0,
+            mode: DrmModeModeinfo::default(),
         };
 
-        // First mode is typically the current/preferred one
-        if let Some(mode) = modes.first() {
-            let is_primary = name_str.contains("eDP");
-
-            // Determine portrait mode: 90° or 270° rotation, or physical portrait panel
-            let is_portrait = (rotation & (DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0
-                || mode.vdisplay > mode.hdisplay;
-
-            // Calculate refresh rate from timing parameters if vrefresh is 0 or missing
-            // Formula: refresh = (clock * 1000) / (htotal * vtotal)
-            // clock is in kHz, so multiply by 1000 to get Hz
-            let refresh = if mode.vrefresh > 0 {
-                mode.vrefresh
-            } else if mode.htotal > 0 && mode.vtotal > 0 {
-                let htotal = mode.htotal as u64;
-                let vtotal = mode.vtotal as u64;
-                let clock = mode.clock as u64;
-                // clock is in kHz, multiply by 1000 to get Hz, then divide by total pixels
-                ((clock * 1000) / (htotal * vtotal)) as u32
-            } else {
-                0
-            };
-
-            let icon = if is_portrait { "󰆡" } else { "󰏠" };
-            let display_str = format!(
-                "{} {}x{} @ {}Hz",
-                icon, mode.hdisplay, mode.vdisplay, refresh
-            );
-            screens.push((is_primary, display_str));
+        if unsafe { libc::ioctl(raw_fd, DRM_IOCTL_MODE_GETCRTC, &mut crtc) } < 0 {
+            continue;
         }
+
+        // If CRTC has no valid mode, skip (shouldn't happen for connected displays)
+        if crtc.mode_valid == 0 {
+            continue;
+        }
+
+        let mode = &crtc.mode;
+
+        // Check rotation from CRTC's plane
+        let rotation = get_crtc_rotation(raw_fd, crtc_id);
+
+        let is_primary = name_str.contains("eDP");
+
+        // Determine portrait mode: 90° or 270° rotation, or physical portrait panel
+        let is_portrait = (rotation & (DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0
+            || mode.vdisplay > mode.hdisplay;
+
+        // Calculate refresh rate from timing parameters if vrefresh is 0 or missing
+        // Formula: refresh = (clock * 1000) / (htotal * vtotal)
+        // clock is in kHz, so multiply by 1000 to get Hz
+        let refresh = if mode.vrefresh > 0 {
+            mode.vrefresh
+        } else if mode.htotal > 0 && mode.vtotal > 0 {
+            let htotal = mode.htotal as u64;
+            let vtotal = mode.vtotal as u64;
+            let clock = mode.clock as u64;
+            // clock is in kHz, multiply by 1000 to get Hz, then divide by total pixels
+            ((clock * 1000) / (htotal * vtotal)) as u32
+        } else {
+            0
+        };
+
+        let icon = if is_portrait { "󰆡" } else { "󰏠" };
+        let display_str = format!(
+            "{} {}x{} @ {}Hz",
+            icon, mode.hdisplay, mode.vdisplay, refresh
+        );
+        screens.push((is_primary, display_str));
     }
 
     if screens.is_empty() {
