@@ -648,10 +648,11 @@ fn screen_from_drm() -> Option<Vec<(String, String)>> {
             let refresh = if mode.vrefresh > 0 {
                 mode.vrefresh
             } else if mode.htotal > 0 && mode.vtotal > 0 {
-                let htotal = mode.htotal as u32;
-                let vtotal = mode.vtotal as u32;
-                // clock is in kHz, result is in Hz
-                mode.clock * 1000 / (htotal * vtotal)
+                let htotal = mode.htotal as u64;
+                let vtotal = mode.vtotal as u64;
+                let clock = mode.clock as u64;
+                // clock is in kHz, multiply by 1000 to get Hz, then divide by total pixels
+                ((clock * 1000) / (htotal * vtotal)) as u32
             } else {
                 0
             };
