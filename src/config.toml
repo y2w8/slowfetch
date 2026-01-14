@@ -56,6 +56,7 @@
 # kernel = true
 # uptime = true
 # init = true
+# os_age = true
 
 [hardware]
 ## Toggle which items to show in Hardware.

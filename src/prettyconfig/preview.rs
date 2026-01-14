@@ -103,6 +103,7 @@ fn filter_core_section(section: &Section, toggles: &CoreToggles) -> Section {
             "Kernel" => toggles.kernel,
             "Uptime" => toggles.uptime,
             "Init" => toggles.init,
+            "OS Age" => toggles.os_age,
             _ => true,
         })
         .cloned()

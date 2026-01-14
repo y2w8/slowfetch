@@ -134,3 +134,13 @@ pub fn get_cached_init() -> Option<String> {
 pub fn cache_init(value: &str) {
     let _ = write_cache("init", value);
 }
+
+// Read cached OS birth timestamp (Unix epoch seconds), or return None to trigger a fresh fetch.
+pub fn get_cached_os_birth() -> Option<u64> {
+    read_cache("os_birth")?.parse().ok()
+}
+
+// Cache the OS birth timestamp (Unix epoch seconds)
+pub fn cache_os_birth(timestamp: u64) {
+    let _ = write_cache("os_birth", &timestamp.to_string());
+}

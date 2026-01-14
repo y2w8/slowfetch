@@ -27,7 +27,7 @@ fn is_immutable_os() -> bool {
 // Uses persistent cache to avoid repeated file reads.
 // Note: Caching is disabled for immutable OSes since the OS name changes daily.
 pub fn os() -> String {
-    // Check if we're on an immutable OS first
+    // Check if its an immutable OS first
     let is_immutable = is_immutable_os();
 
     // Check cache first (unless --refresh was passed or on immutable OS)
@@ -210,4 +210,138 @@ fn init_fresh() -> String {
     }
 
     "unknown".to_string()
+}
+
+// Get the OS installation age by checking the root filesystem birth time.
+// Uses persistent cache for the birth timestamp, then calculates age from that.
+pub fn os_age() -> String {
+    use std::time::SystemTime;
+
+    // Check cache first for the birth timestamp
+    if let Some(birth_time) = cache::get_cached_os_birth() {
+        if let Ok(now) = SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            let age_secs = now.as_secs().saturating_sub(birth_time);
+            return format_age(age_secs);
+        }
+    }
+
+    // No cache hit, fetch fresh value
+    let birth_time = os_birth_fresh();
+
+    if let Some(birth) = birth_time {
+        // Cache the birth timestamp for next time
+        cache::cache_os_birth(birth);
+
+        if let Ok(now) = SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            let age_secs = now.as_secs().saturating_sub(birth);
+            return format_age(age_secs);
+        }
+    }
+
+    "unknown".to_string()
+}
+
+// Fetch OS birth timestamp fresh (no cache)
+fn os_birth_fresh() -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+
+        // Run stat on root filesystem to get birth time
+        if let Ok(output) = Command::new("stat").arg("/").output() {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+
+            // Look for the "Birth:" line in stat output
+            for line in output_str.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("Birth:") {
+                    let birth_str = trimmed.trim_start_matches("Birth:").trim();
+
+                    // Skip if birth time is not available (shows as "-")
+                    if birth_str == "-" || birth_str.is_empty() {
+                        return None;
+                    }
+
+                    // Parse the birth timestamp (format: "2024-01-15 10:30:45.123456789 +0000")
+                    // Extract just the date portion for parsing
+                    if let Some(date_part) = birth_str.split_whitespace().next() {
+                        return parse_date_to_unix(date_part);
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+
+        // On macOS, use stat -f %B to get birth time as unix timestamp
+        if let Ok(output) = Command::new("stat").args(["-f", "%B", "/"]).output() {
+            let timestamp_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            return timestamp_str.parse::<u64>().ok();
+        }
+        return None;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        None
+    }
+}
+
+// Parse a date string (YYYY-MM-DD) to Unix timestamp
+fn parse_date_to_unix(date_str: &str) -> Option<u64> {
+    let parts: Vec<&str> = date_str.split('-').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let year: i32 = parts[0].parse().ok()?;
+    let month: u32 = parts[1].parse().ok()?;
+    let day: u32 = parts[2].parse().ok()?;
+
+    // Simple calculation for days since Unix epoch (1970-01-01)
+    // This is approximate but good enough for age calculation
+    let days_since_epoch = days_from_civil(year, month, day)?;
+    Some((days_since_epoch as u64) * 86400)
+}
+
+// Calculate days since Unix epoch from year/month/day
+// Based on Howard Hinnant's algorithm
+fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
+    if month < 1 || month > 12 || day < 1 || day > 31 {
+        return None;
+    }
+
+    let y = if month <= 2 { year - 1 } else { year } as i64;
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u32;
+    let m = month;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146097 + doe as i64 - 719468)
+}
+
+// Format age in seconds to human-readable string
+fn format_age(seconds: u64) -> String {
+    let days = seconds / 86400;
+    let years = days / 365;
+    let remaining_days = days % 365;
+    let months = remaining_days / 30;
+
+    if years > 0 {
+        if months > 0 {
+            format!("{}y {}mo", years, months)
+        } else {
+            format!("{}y", years)
+        }
+    } else if months > 0 {
+        format!("{}mo", months)
+    } else if days > 0 {
+        format!("{}d", days)
+    } else {
+        "< 1d".to_string()
+    }
 }

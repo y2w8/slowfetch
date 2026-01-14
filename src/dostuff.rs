@@ -36,6 +36,7 @@ pub fn load_sections(config: &Config) -> (Section, Section, Section) {
     let kernel = if config.core.kernel { Some(modules::coremodules::kernel()) } else { None };
     let uptime = if config.core.uptime { Some(modules::coremodules::uptime()) } else { None };
     let init = if config.core.init { Some(modules::coremodules::init()) } else { None };
+    let os_age = if config.core.os_age { Some(modules::coremodules::os_age()) } else { None };
     let cpu = if config.hardware.cpu { Some(modules::hardwaremodules::cpu()) } else { None };
     let memory = if config.hardware.memory { Some(modules::hardwaremodules::memory()) } else { None };
     let battery = if config.hardware.battery { Some(modules::hardwaremodules::laptop_battery()) } else { None };
@@ -44,12 +45,17 @@ pub fn load_sections(config: &Config) -> (Section, Section, Section) {
     let ui = if config.userspace.ui { Some(modules::userspacemodules::ui()) } else { None };
     let editor = if config.userspace.editor { Some(modules::userspacemodules::editor()) } else { None };
 
-    // Build core section - OS info, kernel version, system uptime, init system.
+    // Build core section - OS info, kernel version, system uptime, init system, OS age.
     let mut core_lines = Vec::new();
     if let Some(v) = os { core_lines.push(("OS".to_string(), v)); }
     if let Some(v) = kernel { core_lines.push(("Kernel".to_string(), v)); }
     if let Some(v) = uptime { core_lines.push(("Uptime".to_string(), v)); }
     if let Some(v) = init { core_lines.push(("Init".to_string(), v)); }
+    if let Some(v) = os_age {
+        if v != "unknown" {
+            core_lines.push(("OS Age".to_string(), v));
+        }
+    }
     let core = Section::new("Core", core_lines);
 
     // Build hardware section - CPU, GPU, memory, storage, battery, displays.
