@@ -188,28 +188,57 @@ pub fn init() -> String {
 fn init_fresh() -> String {
     #[cfg(target_os = "linux")]
     {
-        // Fast path: read directly from /proc/1/comm (no subprocess spawn)
+        use std::path::Path;
+
+        // Check for non-systemd init systems by looking for their config files in /etc/
+        // These checks are more reliable than /proc/1/comm which may show "init" generically
+
+        // OpenRC (used by Gentoo, Alpine, Artix, etc.)
+        if Path::new("/etc/openrc").exists() || Path::new("/etc/rc.conf").exists() {
+            // Confirm it's actually OpenRC by checking for the runlevels dir
+            if Path::new("/etc/runlevels").exists() {
+                return "openrc".to_string();
+            }
+        }
+
+        // runit (used by Void Linux, Artix, etc.)
+        if Path::new("/etc/runit").exists() {
+            return "runit".to_string();
+        }
+
+        // s6 (used by Artix, etc.)
+        if Path::new("/etc/s6").exists() || Path::new("/etc/s6-rc").exists() {
+            return "s6".to_string();
+        }
+
+        // dinit (used by Chimera Linux, Artix, etc.)
+        if Path::new("/etc/dinit.d").exists() {
+            return "dinit".to_string();
+        }
+
+        // SysVinit (traditional init)
+        if Path::new("/etc/inittab").exists() && !Path::new("/run/systemd/system").exists() {
+            return "sysvinit".to_string();
+        }
+
+        // Check if systemd is actually running (not just installed)
+        if Path::new("/run/systemd/system").exists() {
+            return "systemd".to_string();
+        }
+
+        // Fallback: read directly from /proc/1/comm
         if let Ok(comm) = fs::read_to_string("/proc/1/comm") {
             return comm.trim().to_string();
         }
+
+        // Unknown non-systemd init
+        "init bruv".to_string()
     }
 
-    // Fallback for macOS or if /proc isn't available
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(not(target_os = "linux"))]
     {
-        use std::process::Command;
-        if let Ok(output) = Command::new("ps")
-            .args(["-p", "1", "-o", "comm="])
-            .output()
-        {
-            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !name.is_empty() {
-                return name;
-            }
-        }
+        "init bruv".to_string()
     }
-
-    "unknown".to_string()
 }
 
 // Get the OS installation age by checking the root filesystem birth time.
@@ -311,17 +340,27 @@ fn parse_date_to_unix(date_str: &str) -> Option<u64> {
 // Calculate days since Unix epoch from year/month/day
 // Based on Howard Hinnant's algorithm
 fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
-    if month < 1 || month > 12 || day < 1 || day > 31 {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
 
-    let y = if month <= 2 { year - 1 } else { year } as i64;
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u32;
-    let m = month;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Some(era * 146097 + doe as i64 - 719468)
+    // Adjust year so March is the first month
+    let is_jan_or_feb = month <= 2;
+    let adjusted_year = year as i64 - is_jan_or_feb as i64;
+    let adjusted_month = if is_jan_or_feb { month + 9 } else { month - 3 } as u64;
+
+    // Split into 400-year eras for leap years
+    let era = adjusted_year.div_euclid(400);
+    let year_of_era = adjusted_year.rem_euclid(400) as u64;
+
+    // Day within the year
+    let day_of_year = (153 * adjusted_month + 2) / 5 + day as u64 - 1;
+
+    // Day within the 400-year era
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+
+    // Convert to Unix epoch (days since 1970-01-01)
+    Some(era * 146097 + day_of_era as i64 - 719468)
 }
 
 // Format age in seconds to human-readable string
