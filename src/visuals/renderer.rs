@@ -209,22 +209,23 @@ pub fn build_box(
 
     // --- step 7: Build content rows ---
     // Format: │ [left_pad] content [right_pad] │
-    for (line_content, &line_visible_width) in lines.iter().zip(line_visible_lengths.iter()) {
-        let total_padding = box_inner_width.saturating_sub(line_visible_width);
+    // For center_content, we center the entire content block as a unit (preserving relative positions)
+    // rather than centering each line independently
+    let block_left_padding = if center_content {
+        let max_line_width = line_visible_lengths.iter().copied().max().unwrap_or(0);
+        (box_inner_width.saturating_sub(max_line_width)) / 2
+    } else {
+        0
+    };
 
-        // Distribute padding based on alignment setting
-        let (left_padding_spaces, right_padding_spaces) = if center_content {
-            let left_pad = total_padding / 2;
-            (left_pad, total_padding - left_pad)
-        } else {
-            // Left-aligned: all padding goes to the right
-            (0, total_padding)
-        };
+    for (line_content, &line_visible_width) in lines.iter().zip(line_visible_lengths.iter()) {
+        // Right padding fills remaining space after block padding and content
+        let right_padding_spaces = box_inner_width.saturating_sub(block_left_padding + line_visible_width);
 
         let content_row = format!(
             "{} {}{}{} {}",
             colored_vertical_border,
-            " ".repeat(left_padding_spaces),
+            " ".repeat(block_left_padding),
             line_content,
             " ".repeat(right_padding_spaces),
             colored_vertical_border

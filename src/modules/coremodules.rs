@@ -190,8 +190,7 @@ fn init_fresh() -> String {
     {
         use std::path::Path;
 
-        // Check for non-systemd init systems by looking for their config files in /etc/
-        // These checks are more reliable than /proc/1/comm which may show "init" generically
+        // Check for non-systemd init systems by looking for their shit in /etc/
 
         // OpenRC (used by Gentoo, Alpine, Artix, etc.)
         if Path::new("/etc/openrc").exists() || Path::new("/etc/rc.conf").exists() {
