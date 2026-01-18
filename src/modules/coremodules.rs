@@ -7,7 +7,7 @@ use crate::helpers::read_first_line;
 
 // Check if the system is an immutable OS by examining /etc/os-release
 fn is_immutable_os() -> bool {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
     {
         if let Ok(content) = fs::read_to_string("/etc/os-release") {
             for line in content.lines() {
@@ -71,7 +71,7 @@ fn os_fresh() -> String {
         return "macOS".to_string();
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
     {
         if let Ok(content) = fs::read_to_string("/etc/os-release") {
             for line in content.lines() {
@@ -86,7 +86,7 @@ fn os_fresh() -> String {
         return "Linux".to_string();
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
     {
         "unsupported platform".to_string()
     }
@@ -106,12 +106,12 @@ pub fn kernel() -> String {
         return "unknown".to_string();
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
     {
         read_first_line("/proc/sys/kernel/osrelease").unwrap_or_else(|| "unknown".to_string())
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
     {
         "unsupported platform".to_string()
     }
@@ -142,7 +142,7 @@ pub fn uptime() -> String {
         return "unknown".to_string();
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
     {
         if let Ok(content) = fs::read_to_string("/proc/uptime") {
             if let Some(seconds_str) = content.split_whitespace().next() {
@@ -161,7 +161,7 @@ pub fn uptime() -> String {
         return "unknown".to_string();
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
     {
         "unsupported platform".to_string()
     }
@@ -186,7 +186,7 @@ pub fn init() -> String {
 
 // Fetch init system info fresh (no cache)
 fn init_fresh() -> String {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
     {
         use std::path::Path;
 
@@ -234,9 +234,9 @@ fn init_fresh() -> String {
         "init bruv".to_string()
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
     {
-        "init bruv".to_string()
+        "launchd".to_string()
     }
 }
 
@@ -271,7 +271,7 @@ pub fn os_age() -> String {
 
 // Fetch OS birth timestamp fresh (no cache)
 fn os_birth_fresh() -> Option<u64> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
     {
         use std::process::Command;
 
@@ -313,7 +313,7 @@ fn os_birth_fresh() -> Option<u64> {
         return None;
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
     {
         None
     }
