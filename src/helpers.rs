@@ -179,31 +179,38 @@ pub fn get_noctalia_scheme() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
     let path = format!("{}/.config/noctalia/settings.json", home);
 
-    if let Ok(content) = fs::read(&path) {
-        // Find "predefinedScheme" using SIMD search
-        let needle = b"\"predefinedScheme\"";
-        let pos = memmem::find(&content, needle)?;
+    let content = fs::read(&path).ok()?;
 
-        // Find the ':' after the key
+    // Check if useWallpaperColors is enabled
+    if memmem::find(&content, b"\"useWallpaperColors\": true").is_some() {
+        // Return the generation method instead
+        let needle = b"\"generationMethod\"";
+        let pos = memmem::find(&content, needle)?;
         let after_key = &content[pos + needle.len()..];
         let colon_pos = memchr::memchr(b':', after_key)?;
         let after_colon = &after_key[colon_pos + 1..];
-
-        // Find the value (between quotes)
         let quote1 = memchr::memchr(b'"', after_colon)?;
         let after_quote1 = &after_colon[quote1 + 1..];
         let quote2 = memchr::memchr(b'"', after_quote1)?;
-        let value_bytes = &after_quote1[..quote2];
-
-        let value = std::str::from_utf8(value_bytes).ok()?;
-
-        // Return None for default scheme
-        if value.to_lowercase().contains("default") {
-            return None;
-        }
-        return Some(value.to_string());
+        let value = std::str::from_utf8(&after_quote1[..quote2]).ok()?;
+        return Some(capitalize(value));
     }
-    None
+
+    // otherwise return predefinedScheme
+    let needle = b"\"predefinedScheme\"";
+    let pos = memmem::find(&content, needle)?;
+    let after_key = &content[pos + needle.len()..];
+    let colon_pos = memchr::memchr(b':', after_key)?;
+    let after_colon = &after_key[colon_pos + 1..];
+    let quote1 = memchr::memchr(b'"', after_colon)?;
+    let after_quote1 = &after_colon[quote1 + 1..];
+    let quote2 = memchr::memchr(b'"', after_quote1)?;
+    let value = std::str::from_utf8(&after_quote1[..quote2]).ok()?;
+
+    if value.to_lowercase().contains("default") {
+        return None;
+    }
+    Some(value.to_string())
 }
 
 pub fn get_dms_theme() -> Option<String> {
