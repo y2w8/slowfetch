@@ -8,7 +8,7 @@ use memchr::memchr_iter;
 use memchr::memmem;
 
 use crate::cache;
-use crate::helpers::{create_bar, is_laptop, read_first_line};
+use crate::helpers::{create_bar, get_cached_is_nerd_font, is_laptop, read_first_line};
 
 // Get the CPU model name with boost clock.
 // Uses persistent cache to avoid repeated /proc reads.
@@ -265,9 +265,10 @@ pub fn laptop_battery() -> String {
                 let status = read_first_line(path.join("status").to_str().unwrap_or(""))
                     .unwrap_or_else(|| "Unknown".to_string());
 
-                let status_icon = match status.as_str() {
-                    "Charging" => "󰂐",
-                    "Discharging" => "󰂍",
+                let nerd = get_cached_is_nerd_font();
+                let status_icon: &str = match status.as_str() {
+                    "Charging" => if nerd { "󰂐" } else { "(+)" },
+                    "Discharging" => if nerd { "󰂍" } else { "(-)" },
                     _ => &status,
                 };
 
@@ -694,7 +695,7 @@ fn screen_from_drm() -> Option<Vec<(String, String)>> {
             0
         };
 
-        let icon = if is_portrait { "󰆡" } else { "󰏠" };
+        let icon = if is_portrait { if get_cached_is_nerd_font() { "󰆡" } else { "Portrait" } } else { if get_cached_is_nerd_font() { "󰏠" } else { "Landscape" } };
         let display_str = format!(
             "{} {}x{} @ {}Hz",
             icon, mode.hdisplay, mode.vdisplay, refresh
@@ -747,7 +748,7 @@ fn screen_from_xrandr() -> Option<Vec<(String, String)>> {
                     .filter(|c| c.is_ascii_digit() || *c == '.')
                     .collect();
 
-                let icon = if current_is_portrait { "󰆡" } else { "󰏠" };
+                let icon = if current_is_portrait { if get_cached_is_nerd_font() { "󰆡" } else { "Portrait" } } else { if get_cached_is_nerd_font() { "󰏠" } else { "Landscape" } };
                 let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
                     format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64)
                 } else {
@@ -810,7 +811,7 @@ fn screen_from_niri() -> Option<Vec<(String, String)>> {
                     let res = parts[0];
                     let rate = parts[2];
 
-                    let icon = if current_is_portrait { "󰆡" } else { "󰏠" };
+                    let icon = if current_is_portrait { if get_cached_is_nerd_font() { "󰆡" } else { "Portrait" } } else { if get_cached_is_nerd_font() { "󰏠" } else { "Landscape" } };
                     let display_str = if let Ok(rate_f) = rate.parse::<f64>() {
                         format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64)
                     } else {
@@ -897,7 +898,7 @@ fn screen_from_gnome_dbus() -> Option<Vec<(String, String)>> {
                         || after_region.contains(" uint32 3,");
 
                     if let Ok(rate_f) = rate.parse::<f64>() {
-                        let icon = if is_portrait { "󰆡" } else { "󰏠" };
+                        let icon = if is_portrait { if get_cached_is_nerd_font() { "󰆡" } else { "Portrait" } } else { if get_cached_is_nerd_font() { "󰏠" } else { "Landscape" } };
                         let display_str =
                             format!("{} {} @ {}Hz", icon, res, rate_f.round() as u64);
                         screens.push((is_primary, display_str));
