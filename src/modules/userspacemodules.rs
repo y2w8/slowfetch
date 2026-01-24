@@ -83,8 +83,10 @@ pub fn packages() -> String {
     }
 
     // RPM check if rpmdb exists
+    // Turns out fedora uses rpmdb to /usr/lib/sysimage/rpm/ with a symlink at /var/lib/rpm KEK
     if Path::new("/var/lib/rpm/rpmdb.sqlite").exists()
         || Path::new("/var/lib/rpm/Packages").exists()
+        || Path::new("/usr/lib/sysimage/rpm/rpmdb.sqlite").exists()
     {
         if let Ok(output) = Command::new("rpm").arg("-qa").output() {
             // Count newlines using SIMD-accelerated memchr
