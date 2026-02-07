@@ -187,7 +187,7 @@ pub fn packages() -> String {
                     .unwrap_or(0)
             });
             if count > 0 {
-                let icon = if nerd { "" } else { "(rpm)" };
+                let icon = if nerd { "" } else { "(rpm)" };
                 counts.push(format!("{} {}", icon, count));
             }
         } else if Path::new("/var/lib/rpm/Packages").exists() {
@@ -195,7 +195,7 @@ pub fn packages() -> String {
             if let Ok(output) = Command::new("rpm").arg("-qa").output() {
                 let count = memchr_iter(b'\n', &output.stdout).count();
                 if count > 0 {
-                    let icon = if nerd { "" } else { "(rpm)" };
+                    let icon = if nerd { "" } else { "(rpm)" };
                     counts.push(format!("{} {}", icon, count));
                 }
             }
@@ -206,7 +206,7 @@ pub fn packages() -> String {
     if let Ok(entries) = fs::read_dir("/var/lib/flatpak/app") {
         let count = entries.filter(|e| e.is_ok()).count();
         if count > 0 {
-            let icon = if nerd { " " } else { "(flatpak)" };
+            let icon = if nerd { " " } else { "(flatpak)" };
             counts.push(format!("{} {}", icon, count));
         }
     }
@@ -241,7 +241,7 @@ pub fn packages() -> String {
             .filter(|e| e.file_type().map_or(false, |ft| ft.is_dir()))
             .count();
         if count > 0 {
-            let icon = if nerd { "" } else { "(xbps)" };
+            let icon = if nerd { "" } else { "(xbps)" };
             counts.push(format!("{} {}", icon, count));
         }
     }
@@ -260,7 +260,7 @@ pub fn packages() -> String {
             })
             .sum();
         if count > 0 {
-            let icon = if nerd { "" } else { "(portage)" };
+            let icon = if nerd { "" } else { "(portage)" };
             counts.push(format!("{} {}", icon, count));
         }
     }
@@ -400,7 +400,7 @@ pub fn ui() -> String {
                 if memmem::find(&cmdline, b"noctalia-shell").is_some() {
                     let mut name = "Noctalia Shell".to_string();
                     if let Some(scheme) = get_noctalia_scheme() {
-                        let icon = if get_cached_is_nerd_font() { "" } else { "Theme:" };
+                        let icon = if get_cached_is_nerd_font() { "" } else { "Theme:" };
                         name = format!("{} | {} {}", name, icon, capitalize(&scheme));
                     }
                     return name;
@@ -411,7 +411,7 @@ pub fn ui() -> String {
                         let formatted_theme = theme
                             .replace("cat-", "Catppuccin (")
                             + if theme.starts_with("cat-") { ")" } else { "" };
-                        let icon = if get_cached_is_nerd_font() { " " } else { "Theme:" };
+                        let icon = if get_cached_is_nerd_font() { "" } else { "Theme:" };
                         name = format!("{} | {} {}", name, icon, capitalize(&formatted_theme));
                     }
                     return name;
@@ -460,7 +460,7 @@ pub fn editor() -> String {
 
     match (visual.as_deref().and_then(format_editor), editor.as_deref().and_then(format_editor)) {
         (Some(v), Some(e)) if v != e => {
-            let (icon1, icon2) = if get_cached_is_nerd_font() { ("󰍹", "") } else { ("GUI:", "TUI:") };
+            let (icon1, icon2) = if get_cached_is_nerd_font() { ("󰍹", "") } else { ("GUI:", "TUI:") };
             format!("{} {} | {} {}", icon1, v, icon2, e)
         }
         (Some(v), _) => v,
