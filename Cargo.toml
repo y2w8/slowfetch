@@ -18,6 +18,8 @@ libc = "0.2"
 memchr = "2.7"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 crossterm = "0.29.0"
+unicode-segmentation = "1.12.0"
+unicode-width = "0.2.2"
 
 [profile.bench]
 debug = true

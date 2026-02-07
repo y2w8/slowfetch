@@ -124,12 +124,10 @@ fn render_side_by_side_with_image(
     print!("{}", output);
     let _ = std::io::stdout().flush();
 
-    // Move cursor up to the top of the image box area
-    // ANSI escape: \x1b[nA = move cursor up n lines
-    print!("\x1b[{}A", total_output_lines - 1);
-    // Move cursor right to skip the left border
-    // ANSI escape: \x1b[nC = move cursor right n columns
-    print!("\x1b[2C");
+    // Save cursor position at end of output, then move into image box
+    print!("\x1b7"); // Save cursor (DECSC)
+    print!("\x1b[{}A", total_output_lines - 1); // Move up to first content row
+    print!("\x1b[2C"); // Move right past left border
     let _ = std::io::stdout().flush();
 
     // --- step 5: Display the image using Kitty protocol ---
@@ -145,9 +143,8 @@ fn render_side_by_side_with_image(
         Err(image_error) => eprintln!("Image error: {}", image_error),
     }
 
-    // --- step 6: Move cursor back down to after the layout ---
-    // ANSI escape: \x1b[nB = move cursor down n lines
-    println!("\x1b[{}B", total_output_lines);
+    // --- step 6: Restore cursor to end of layout ---
+    print!("\x1b8"); // Restore cursor (DECRC)
     let _ = std::io::stdout().flush();
 }
 
@@ -211,10 +208,10 @@ fn render_stacked_with_image(
         print!("{}", output);
         let _ = std::io::stdout().flush();
 
-        // Move cursor up to the top of the image box
-        print!("\x1b[{}A", total_output_lines - 1);
-        // Move cursor right to skip the left border
-        print!("\x1b[2C");
+        // Save cursor position at end of output, then move into image box
+        print!("\x1b7"); // Save cursor (DECSC)
+        print!("\x1b[{}A", total_output_lines - 1); // Move up to first content row
+        print!("\x1b[2C"); // Move right past left border
         let _ = std::io::stdout().flush();
 
         // --- step 7: Display the image ---
@@ -230,8 +227,8 @@ fn render_stacked_with_image(
             Err(image_error) => eprintln!("Image error: {}", image_error),
         }
 
-        // --- step 8: Move cursor back down ---
-        println!("\x1b[{}B", total_output_lines);
+        // --- step 8: Restore cursor to end of layout ---
+        print!("\x1b8"); // Restore cursor (DECRC)
         let _ = std::io::stdout().flush();
     } else {
         // --- fallback: Terminal too small, show sections only ---

@@ -4,6 +4,7 @@ use crate::configloader::{BorderLineStyle, BoxStyle};
 use crate::visuals::colorcontrol::{color_border, color_key, color_title, color_value};
 use crate::visuals::terminalsize::get_terminal_size;
 use memchr::memchr;
+use unicode_width::UnicodeWidthStr;
 use std::sync::{OnceLock, RwLock};
 
 // Global box style config, initialized once from config file
@@ -66,45 +67,58 @@ fn get_box_chars() -> (&'static str, &'static str, &'static str, &'static str, &
     (top_left, top_right, bottom_left, bottom_right, horizontal, vertical)
 }
 
-// Count visible characters in a byte slice (no ANSI sequences)
-// Counts ASCII bytes and UTF-8 start bytes (skips continuation bytes)
+// Skip past an ANSI escape sequence starting at `esc_pos`.
+// Handles CSI (\x1b[...X), OSC (\x1b]...BEL/ST), and simple two-byte escapes.
 #[inline]
-fn count_visible_bytes(bytes: &[u8]) -> usize {
-    let mut count = 0;
-    for &b in bytes {
-        if b < 0x80 {
-            // ASCII byte
-            count += 1;
-        } else if (b & 0xC0) != 0x80 {
-            // UTF-8 start byte (not a continuation byte)
-            count += 1;
-        }
+fn skip_ansi_sequence(bytes: &[u8], esc_pos: usize) -> usize {
+    let len = bytes.len();
+    if esc_pos + 1 >= len {
+        return len;
     }
-    count
+    match bytes[esc_pos + 1] {
+        b'[' => {
+            // CSI sequence: ends at first byte in 0x40..=0x7E
+            let mut i = esc_pos + 2;
+            while i < len {
+                if (0x40..=0x7E).contains(&bytes[i]) {
+                    return i + 1;
+                }
+                i += 1;
+            }
+            len
+        }
+        b']' => {
+            // OSC sequence: ends at BEL (0x07) or ST (\x1b\\)
+            let mut i = esc_pos + 2;
+            while i < len {
+                if bytes[i] == 0x07 {
+                    return i + 1;
+                }
+                if bytes[i] == 0x1b && i + 1 < len && bytes[i + 1] == b'\\' {
+                    return i + 2;
+                }
+                i += 1;
+            }
+            len
+        }
+        _ => esc_pos + 2,
+    }
 }
 
-// Calculate the visible character width of a string, ignoring ANSI escape codes.
+// Calculate the visible display width of a string, ignoring ANSI escape codes.
 // Uses SIMD-accelerated memchr to find escape sequences quickly.
+// Accounts for wide characters (CJK, fullwidth) via unicode-width.
 pub fn visible_len(text: &str) -> usize {
     let bytes = text.as_bytes();
     let mut visible = 0;
     let mut pos = 0;
 
-    // Use SIMD to find each ESC (0x1b) byte
     while let Some(esc_offset) = memchr(0x1b, &bytes[pos..]) {
         let esc_pos = pos + esc_offset;
-        // Count visible chars before this escape sequence
-        visible += count_visible_bytes(&bytes[pos..esc_pos]);
-        // Find the 'm' that ends the ANSI sequence
-        if let Some(m_offset) = memchr(b'm', &bytes[esc_pos..]) {
-            pos = esc_pos + m_offset + 1;
-        } else {
-            // Malformed: no 'm' found, skip rest of string
-            return visible;
-        }
+        visible += UnicodeWidthStr::width(&text[pos..esc_pos]);
+        pos = skip_ansi_sequence(bytes, esc_pos);
     }
-    // Count remaining visible chars after last escape sequence
-    visible += count_visible_bytes(&bytes[pos..]);
+    visible += UnicodeWidthStr::width(&text[pos..]);
     visible
 }
 
@@ -417,19 +431,33 @@ pub fn draw_layout(
     if terminal_width >= wide_side_by_side_width {
         // layout 1: Wide art side-by-side
         let sections_box = build_sections_lines(sections, None);
-        // If sections are shorter than wide art, use narrow art instead
+        // If sections are shorter than wide art, try smaller art variants
         let wide_art_box_height = wide_art.len() + 2;
         if sections_box.len() < wide_art_box_height {
-            // Fall back to narrow art side-by-side
-            let narrow_side_by_side_width = narrow_art_width + 4 + 1 + sections_box_width;
-            if terminal_width >= narrow_side_by_side_width {
-                let art_box = build_box(narrow_art, None, None, Some(sections_box.len()), true);
-                render_side_by_side(&art_box, &sections_box, &mut output);
+            // Try smol art side-by-side first (tier 2)
+            let used_smol = if let Some(smol_art_lines) = smol_art {
+                let smol_art_box_height = smol_art_lines.len() + 2;
+                if sections_box.len() >= smol_art_box_height && terminal_width >= smol_side_by_side_width {
+                    let art_box = build_box(smol_art_lines, None, None, Some(sections_box.len()), true);
+                    render_side_by_side(&art_box, &sections_box, &mut output);
+                    true
+                } else {
+                    false
+                }
             } else {
-                // Terminal too narrow for narrow art side-by-side, just use sections
-                for line in &sections_box {
-                    output.push_str(line);
-                    output.push('\n');
+                false
+            };
+            // Fall back to narrow art side-by-side
+            if !used_smol {
+                let narrow_side_by_side_width = narrow_art_width + 4 + 1 + sections_box_width;
+                if terminal_width >= narrow_side_by_side_width {
+                    let art_box = build_box(narrow_art, None, None, Some(sections_box.len()), true);
+                    render_side_by_side(&art_box, &sections_box, &mut output);
+                } else {
+                    for line in &sections_box {
+                        output.push_str(line);
+                        output.push('\n');
+                    }
                 }
             }
         } else {
